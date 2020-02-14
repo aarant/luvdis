@@ -1,0 +1,4 @@
+.ropeproject/
+__pycache__/
+build/
+*.cfg
