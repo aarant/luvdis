@@ -4,7 +4,7 @@ import sys
 
 from os.path import join as joinp
 
-from charmap import convert_file
+from luvdis.charmap import convert_file
 
 AS = joinp('asm', 'arm-none-eabi-as')
 LD = joinp('asm', 'arm-none-eabi-ld')

@@ -1,19 +1,17 @@
 import sys
 import re
 import os.path
-import argparse
-import time
-from math import isnan
+import pkg_resources
 from bisect import bisect_left, bisect_right
 from io import BytesIO
-from collections import defaultdict, deque
+from collections import defaultdict
 
-from decoder import disasm, Opcode, Reg, BRANCHES, signed
-from decoder import Thumb1, Thumb2, Thumb3, Thumb4, Thumb5, Thumb6, Thumb78, Thumb910, Thumb11, Thumb12, Thumb13
+from luvdis import __version__
+from luvdis.decoder import disasm, Opcode, Reg, BRANCHES
+from luvdis.decoder import Thumb1, Thumb2, Thumb3, Thumb4, Thumb5, Thumb6, Thumb78, Thumb910, Thumb11, Thumb12, Thumb13
 
 
 DEBUG = True
-__version__ = '0.1.0'
 
 
 class ROM:
@@ -103,7 +101,7 @@ FLAG_EXEC = 1
 FLAG_WORD = 2
 
 
-class AddrFlags:  # Markable address flags
+class RomFlags:  # Markable address flags
     def __init__(self, size):
         self.size = size
         self.flags = bytearray(size)
@@ -168,12 +166,11 @@ THUMB = 0
 BASE_ADDRESS = 0x08000000
 load_re = re.compile(r'.*\[pc, #(0x[a-fA-F0-9]+)\]')
 ASM_PRELUDE = f'@ Generated with Luvdis v{__version__}\n.syntax unified\n.text\n'
-with open('function.inc', 'r') as f:
-    MACROS = f.read()
+MACROS = pkg_resources.resource_string('luvdis', 'functions.inc')
 INF = float('inf')
 
 
-class UndefInt:
+class UndefInt:  # In integer-like object that is only equal to itself and is closed under all operations
     def __init__(self):
         pass
 
@@ -208,7 +205,7 @@ class UndefInt:
         return 'undefined'
 
     def __format__(self, _):
-        return 'unknown?'
+        return '?'
 
 
 class CPUState:
@@ -249,6 +246,7 @@ class CPUState:
             elif isinstance(ins, Thumb6):
                 value = rom.read(ins.target, 4)
                 self[ins.rd] = value
+                break
             elif isinstance(ins, Thumb78):
                 self.load(rom, ins.rd, ins.rb, ins.ro, ins.id)
             elif isinstance(ins, Thumb910):  # TODO: Multiply offsets
@@ -411,6 +409,7 @@ class State:
     def __init__(self, functions=None, min_calls=2, min_length=3, start=BASE_ADDRESS, stop=INF, macros=None):
         self.unexpanded = functions.copy() if functions else {}  # Maps addr -> function name or None
         self.functions = {}  # addr -> (name, end)
+        self.not_funcs = set()
         self.min_calls, self.min_length, self.start, self.stop = min_calls, min_length, start, stop
         self.macros = macros
 
@@ -431,7 +430,7 @@ class State:
 
     def analyze_rom(self, rom):  # Analyze a ROM
         pushes = set()  # Set of push {xx, lr} instruction locations
-        self.flags = AddrFlags(rom.size)
+        self.flags = RomFlags(rom.size)
         # Build instruction tables, etc for later
         for ins in rom.dist(self.start):  # TODO: Debug
             addr = ins.address
@@ -473,20 +472,28 @@ class State:
         self.forks.extend(self.bxs)
         for to_sort in self._to_sort:  # Sort all sorted lists
             to_sort.sort()
-        # Intersect call destination and entry sets and add possible functions
-        eprint(f'Found {len(self.unexpanded)} functions')
-        self.guess_funcs(rom, pushes)
-        eprint(f'Found {len(self.unexpanded)} functions')
-        # Repeatedly expand known functions until there are no changes
+        # Expand all provided functions
+        eprint(f'{len(self.unexpanded)} functions provided')
+        self.analyze_funcs(rom, 0)
         changed = True
         while changed:
-            changed = self.analyze_funcs(rom)
-            eprint(f'Found {len(self.functions)} functions')
+            changed = self.analyze_funcs(rom, 2/3)  # TODO: Custom threshold
+        eprint(f'Found {len(self.functions)} functions')
+        # Guess functions based on push-bl intersection
+        self.guess_funcs(rom, pushes)
+        changed = True
+        while changed:
+            changed = self.analyze_funcs(rom, 1)
+        eprint(f'Found {len(self.functions)} functions')
+        # TODO: library detection
+        # TODO: Reverse call searching
+        eprint(f'{len(self.not_funcs)} not-funcs')
         self.make_labels(rom)
 
     def guess_funcs(self, rom, entries):  # Guess functions based on heuristic
+        dicts = (self.functions, self.unexpanded, self.not_funcs)
         for maybe_func in entries:
-            if maybe_func not in self.unexpanded and maybe_func < self.stop:
+            if maybe_func < self.stop and all(maybe_func not in d for d in dicts):
                 ncalls = len(self.call_to[maybe_func])  # Number of calls pointing here
                 if ncalls < self.min_calls:  # Not enough calls; reject
                     continue
@@ -516,6 +523,12 @@ class State:
                         exit_behavior = False
                         end = rom.size | 0x08000000 if ins is None else ins.address
                         break
+                    elif ins.id == Opcode.ldr:  # Mark target as WORD
+                        end = addr = ins.address+2
+                        target = ins.target
+                        if target < self.stop:  # TODO: Is this necessary?
+                            labels[target] = WORD
+                            ranges.append((target, target+4, FLAG_WORD))
                     elif ins.id in BRANCHES:
                         target = ins.target
                         end = addr = ins.address+2
@@ -543,22 +556,23 @@ class State:
                         target = state[ins.rs] & 0xffffffff
                         end = addr = ins.address+2
                         # Well-behaved iff returned properly and the stack is safe
-                        exit_behavior = target == BASE_ADDRESS and state[13] == initial_stack
+                        exit_behavior = target == state.return_addr and state[13] == initial_stack
                         break
                     elif ins.id == Opcode.pop:  # pop {pc}
-                        exit_behavior = (state[15] & 0xffffff) == BASE_ADDRESS
+                        end = ins.address+2
+                        exit_behavior = (state[15] & 0xffffff) == state.return_addr
                         break
                     else:  # ADD/MOV pc
                         target = state[ins.rd] & 0xffffffff
                         end = addr = ins.address+2
-                        exit_behavior = target == BASE_ADDRESS and state[13] == initial_stack
+                        exit_behavior = target == state.return_addr and state[13] == initial_stack
                         break
                 expanded[start] = exit_behavior
-                ranges.append((start, end))
+                ranges.append((start, end, FLAG_EXEC))
             starts = new_starts
         # Tally exit behaviors
-        l = [1 if behavior else 0 for behavior in expanded.values() if behavior is not None]
-        total, exited = len(l), sum(l)
+        exits = [1 if behavior else 0 for behavior in expanded.values() if behavior is not None]
+        total, exited = len(exits), sum(exits)
         return exited, total, labels, calls, ranges
 
     def expand_func(self, rom, addr):  # Expands function codepaths and marks memory regions
@@ -571,8 +585,8 @@ class State:
             for start in starts:
                 data = left_gt(self.data, start)  # First non-coding instr
                 fork = left_gt(self.forks, start)  # First fork
-                data = data if data else rom.size | 0x08000000
-                fork = fork + 2 if fork else rom.size | 0x08000000
+                data = data if data else rom.size | BASE_ADDRESS
+                fork = fork + 2 if fork else rom.size | BASE_ADDRESS
                 end = min(data, fork)
                 for b in find_bounds(self.branches, start, end):  # Simulate each branch
                     ins, = rom.dist(b, 1)
@@ -580,8 +594,6 @@ class State:
                     if target < self.stop:
                         self.label_map[target] = BRANCH  # Mark as branch
                         if target not in expanded:  # Add target as a potential start run
-                            if target > 0x081B32B0:
-                                dprint(f'DEBUG: Target {target:08X} reached at {b:08X}: {ins.mnemonic} {ins.op_str}')
                             new_starts.add(target)
                     else:  # Forbidden jump, not a function!
                         return None, set()
@@ -611,31 +623,26 @@ class State:
             starts = new_starts
         return exit_addr, calls
 
-    def analyze_funcs(self, rom):
+    def analyze_funcs(self, rom, threshold=0.5):
         changed = False
-        print(f'\rFound {len(self.functions)} functions', end='')
-        for func, name in self.unexpanded.copy().items():
+        new_unexpanded = {}
+        # print(f'\rFound {len(self.functions)} functions', end='')
+        for func, name in self.unexpanded.items():
             exited, total, labels, calls, ranges = self.analyze_func(rom, func)
-            # print(f'func {func:08X} {exited}/{total}')
-            if total and exited == total:  # DEBUG
-                pass
-            elif func == 0x08000348:
-                input()
-                continue
-            else:
+            if (total and exited/total < threshold) or (total == 0 != threshold):
+                self.not_funcs.add(func)
                 continue
             self.label_map.update(labels)
-            for start, end in ranges:
-                self.flags[start:end] |= FLAG_EXEC
+            for start, end, flag in ranges:
+                self.flags[start:end] |= flag
             for target in calls:
-                if target not in self.functions and target not in self.unexpanded:
-                    self.unexpanded[target] = None
+                if all(target not in d for d in (self.functions, self.unexpanded, self.not_funcs, new_unexpanded)):
+                    new_unexpanded[target] = None
                     changed = True
             self.functions[func] = (name, None)  # TODO: End?
-            self.unexpanded.pop(func)
-            print(f'\rFound {len(self.functions)} functions', end='')
-        print()
-        input('foo')
+            # print(f'\rFound {len(self.functions)} functions', end='')
+        # print()
+        self.unexpanded = new_unexpanded
         return changed
 
     def expand_funcs(self, rom):
@@ -644,8 +651,6 @@ class State:
             end, calls = self.expand_func(rom, func)
             for target in calls:
                 if target not in self.functions and target not in self.unexpanded:
-                    if target > 0x081B32B0:
-                        dprint(f'DEBUG: Target {target:08X} called from func {func:08X}')
                     self.unexpanded[target] = None
                     changed = True
             if end is not None:
@@ -817,11 +822,7 @@ class State:
         self.dump(rom, f)
 
 
-def parse_int(n):
-    return int(n, 0)
-
-
-# func_type? address module name?
+# [arm_func|thumb_func] <address> [module] [name]
 cfg_re = re.compile(r'(thumb_func|arm_func)?\s+0x([0-9a-fA-F]{7,8})(?:\s+(\S+\.s))?(?:\s+(\S+)\r?\n)?')
 
 
@@ -845,6 +846,7 @@ def read_config(path):
 
 def write_config(addr_map, path):
     with open(path, 'w', buffering=1) as f:
+        f.write(f'# {len(addr_map)} functions\n# [arm_func|thumb_func] <address> [module] [name]\n')
         for addr in sorted(addr_map):
             name, module = addr_map[addr]
             parts = [f'0x{addr:07X}']
@@ -853,40 +855,3 @@ def write_config(addr_map, path):
             if name:
                 parts.append(name)
             f.write(' '.join(parts) + '\n')
-
-
-parser = argparse.ArgumentParser(prog='luvdis')
-parser.add_argument('rom', type=str)
-parser.add_argument('-o', type=str, dest='out', default=None, metavar='output')
-parser.add_argument('-c', '--config', type=str, dest='config', default=None)
-parser.add_argument('-D', '--debug', action='store_true', dest='debug')
-parser.add_argument('--min_calls', type=int, default=2)
-parser.add_argument('--min_length', type=int, default=3)
-parser.add_argument('--start', type=parse_int, default=BASE_ADDRESS)
-parser.add_argument('--stop', type=parse_int, default=float('inf'))
-parser.add_argument('--macros', type=str, default=None)
-
-
-def main(args):
-    global DEBUG
-    parsed = parser.parse_args(args)
-    DEBUG = parsed.debug
-    if parsed.config:
-        functions = {addr: name for addr, (name, _) in read_config(parsed.config).items()}
-    else:
-        functions = {0x0800024c: 'AgbMain', 0x08000604: 'HBlankIntr', 0x08000348: 'UpdateLinkAndCallCallbacks'}
-        functions = {0x08000348: 'UpdateLinkAndCallCallbacks'}
-        # functions = {}
-    state = State(functions, parsed.min_calls, parsed.min_length, parsed.start, parsed.stop, parsed.macros)
-    rom = ROM(parsed.rom)
-    if parsed.out is None:
-        f = sys.stdout
-        eprint(f'No output file specified. Printing to stdout.')
-        state.disassemble(rom, f)
-    else:
-        with open(parsed.out, 'w', buffering=1) as f:
-            state.disassemble(rom, f)
-
-
-if __name__ == '__main__':
-    main(sys.argv[1:])

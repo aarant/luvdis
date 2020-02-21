@@ -4,8 +4,6 @@ import time
 from io import BytesIO
 from enum import IntEnum, auto
 
-from assemble import assemble
-
 
 class Reg(IntEnum):
     r0 = 0

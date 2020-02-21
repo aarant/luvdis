@@ -3,8 +3,8 @@ import os.path
 import glob
 from os.path import join as joinp
 
-from assemble import assemble
-from decoder import disasm, Opcode
+from luvdis.assemble import assemble
+from luvdis.decoder import Opcode, disasm
 
 BASE_ADDRESS = 0x08000000
 

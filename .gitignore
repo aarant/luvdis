@@ -2,3 +2,6 @@
 __pycache__/
 build/
 *.cfg
+*.egg-info/
+dist/
+/*.s
