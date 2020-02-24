@@ -3,10 +3,11 @@ import os.path
 import glob
 from os.path import join as joinp
 
-from luvdis.assemble import assemble
+from luvdis.assemble import assemble, sremove
 from luvdis.decoder import Opcode, disasm
 
 BASE_ADDRESS = 0x08000000
+TEST_DIR = joinp('luvdis', 'test')
 
 
 def write_asm(gen, path, labels):
@@ -28,7 +29,7 @@ def compare_binaries(p1, p2):
         addr = BASE_ADDRESS
         for i, j in zip(b1, b2):
             if i != j:
-                raise Exception(f'Address {addr:08X} differs ({addr-BASE_ADDRESS} bytes in)')
+                raise Exception(f'Address {addr:08X} differs (Offset {addr-BASE_ADDRESS})')
             addr += 1
         return len(b1) == len(b2)
 
@@ -40,27 +41,24 @@ def round_trip(path, labels=None):
     build_clean = joinp('build', f'{root}.bin')
     with open(build_clean, 'rb') as f:
         dis = disasm(f, BASE_ADDRESS)
-        asm_rt = joinp('test', f'{root}_rt.s')
+        asm_rt = joinp(TEST_DIR, f'{root}_rt.s')
         write_asm(dis, asm_rt, labels)
     assemble(asm_rt, BASE_ADDRESS, debug=False)
     build_rt = joinp('build', f'{root}_rt.bin')
     try:
         eq = compare_binaries(build_clean, build_rt)
-    except:
+    except Exception:
         raise
     else:
         paths = glob.glob(joinp('build', f'{root}*')) + [asm_rt]
         for path in paths:
-            try:
-                os.remove(path)
-            except:
-                pass
+            sremove(path)
     return eq
 
 
 class DecoderTest(unittest.TestCase):
     def test_full(self):
-        self.assertTrue(round_trip(joinp('test', 'test_full.s'), {0x08000088: 'label', 0x08000092: 'label2'}))
+        self.assertTrue(round_trip(joinp(TEST_DIR, 'test_full.s'), {0x08000088: 'label', 0x08000092: 'label2'}))
 
 
 if __name__ == '__main__':

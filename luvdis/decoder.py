@@ -1,3 +1,4 @@
+""" ARM7TDMI THUMB instruction decoder. """
 import io
 import time
 
@@ -96,20 +97,23 @@ class Opcode(IntEnum):
     bl = auto()
 
 
-BRANCHES = {Opcode.beq, Opcode.bne, Opcode.bcs, Opcode.bcc,
-            Opcode.bmi, Opcode.bpl, Opcode.bvs, Opcode.bvc,
-            Opcode.bhi, Opcode.bls, Opcode.bge, Opcode.blt,
-            Opcode.bgt, Opcode.ble, Opcode.b}
+# Set of all unconditional/conditional branch opcodes
+BRANCHES = {Opcode.beq, Opcode.bne, Opcode.bcs, Opcode.bcc, Opcode.bmi, Opcode.bpl, Opcode.bvs, Opcode.bvc,
+            Opcode.bhi, Opcode.bls, Opcode.bge, Opcode.blt, Opcode.bgt, Opcode.ble, Opcode.b}
 
 
-# GBATEK: https://problemkaputt.de/gbatek.htm#thumbinstructionsummary
+# See GBATEK: https://problemkaputt.de/gbatek.htm#thumbinstructionsummary
 
 
-class ThumbInstr:
+class ThumbInstr:  # ABC
     size = 2
     @property
     def mnemonic(self):
         return self.id.name.lower()
+
+    @property
+    def target(self):
+        return None
 
     def __str__(self):
         return f'{self.mnemonic} {self.op_str}'
@@ -334,6 +338,9 @@ class Thumb14(ThumbInstr):  # Push/pop registers
                 regs.append(Reg(bit).name)
         return '{' + ', '.join(regs) + '}'
 
+    def __contains__(self, r):
+        return self.rlist & (1 << r) != 0
+
 
 class Thumb15(ThumbInstr):  # Multiple load/store  TODO: See THUMB.15 "Strange effects"
     __slots__ = ('id', 'address', 'rb', 'rlist')
@@ -353,10 +360,10 @@ class Thumb15(ThumbInstr):  # Multiple load/store  TODO: See THUMB.15 "Strange e
         return f'{self.rb.name}!, {{{", ".join(regs)}}}'
 
     def __str__(self):
-        # Invalid rlist or base in writeback  TODO: Handle this elsewhere?
+        # Invalid in ARMv4: rlist or base in writeback  TODO: Handle invalid rlists elsewhere?
         if self.rlist == 0 or (self.id == Opcode.ldm and self.touched(self.rb)):
             value = 0xC000 | (0x800 if self.id == Opcode.ldm else 0) | (self.rb << 8) | self.rlist
-            return f'inst 0x{value:04X}'
+            return f'.inst 0x{value:04X}'
         else:
             return f'{self.mnemonic} {self.op_str}'
 
@@ -409,10 +416,7 @@ def disasm(f_or_buffer, address: int, count=float('inf')):
         address (int): Initial address of the first instruction.
         count (int): Maximum number of instructions to emit. Defaults to infinity.
     """
-    if not isinstance(f_or_buffer, io.BufferedIOBase):
-        f = BytesIO(f_or_buffer)
-    else:
-        f = f_or_buffer
+    f = f_or_buffer if isinstance(f_or_buffer, io.BufferedIOBase) else BytesIO(f_or_buffer)
     i = 0
     while i < count:
         ins = f.read(2)
@@ -566,7 +570,7 @@ def disasm(f_or_buffer, address: int, count=float('inf')):
                     op = Opcode.push
                     rlist |= (1 << 14) if (ins >> 8) & 1 else 0
                 emit = Thumb14(op, address, rlist)
-            else:  # TODO: BKPT?
+            else:  # TODO: Add BKPT instruction?
                 pass
         elif op == 0b110:
             op = (ins >> 12) & 0b1111
@@ -603,7 +607,7 @@ def disasm(f_or_buffer, address: int, count=float('inf')):
                     emit = Thumb19(Opcode.bl, address, target)
                 else:  # Seek back before the read
                     f.seek(-len(b), 1)
-            else:  # TODO: Partial BL
+            else:  # TODO: Partial BL's are legal (See GBATEK Thumb.19)
                 pass
         if emit is None:
             emit = ThumbIll(Opcode.ill, address, ins)
@@ -619,7 +623,7 @@ def signed(n, nbits):  # Convert an unsigned n-bit integer into a signed integer
     return n
 
 
-def thumb_percentage():
+def thumb_percentage():  # Compute percentage of illegal thumb instructions
     asm = bytearray()
     for i in range(2**16):
         asm.extend(i.to_bytes(2, 'little'))

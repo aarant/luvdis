@@ -15,7 +15,6 @@ string_re = re.compile(r'\.string\s+([\'"].*[\'"])')
 
 
 def convert_match(m):
-    print(f'STR {m.group(1)}')
     s = eval(m.group(1))
     return convert(s)
 
@@ -36,38 +35,13 @@ def convert_file(path, out_path):
         replaced, _ = string_re.subn(convert_match, content)
         f_out.write(replaced)
 
+
 def convert_binary(s):
     b = bytes([char_to_byte[c] for c in s] + [0xff])
     with open('input.bin', 'wb') as f:
         f.write(b)
 
+
 def convert_hex(h):
     with open('input.bin', 'wb') as f:
         f.write(bytearray.fromhex(h))
-
-
-
-if __name__ == '__main__':
-    s = 'Something seems to\nhave gone wrong.^Who are you?\rAnd how did you get\nhere?\rTASing? What is that?'
-    s = 'The teleporter must\nhave been overloaded.\rThis poor trainer\nisn\'t well.\r' + \
-        'With all that\ninterference..\rit\'s as if someone\npressed every button^all at once!\rBut that means..'
-    s = 'It must have picked up\na different signal..\rfrom another region?\n..Or another world?\r' + \
-        'So where did it send\nBill?'
-    s = 'Leaf, we have to run\nthe experiment again.\rI think I can reverse\nit, and put things^back to normal.\r' + \
-        '..I hope.\rJust step inside the\ndoor when it starts.'
-    s = 'Oh no..\rJust hang on! I can\nturn it off!'
-
-    s = 'Hey!\rDid you enjoy the TAS?\rThis took quite a long\ntime to make..\rDo you want to have a\nreal battle?'
-    s = 'OK! Come back anytime!'
-    s = "\xfcさあ6Alright, here goes.."
-    s = "RIP Poochyena.."
-    s = "Marshtomp used\nRNG hacks!"
-    s = "It hurt itself in its\nconfusion!"
-    s = "No u"
-    h = '0000000000000000CEBBCDFF0000000000000202E1D9E6E6E4FF0000F19A0000E900990040420F0000FF000090007600A600620119191919FF000000FF0000000000000000FFE4E1FFFFFF3F00000000'
-    s = 'This it! TAS!'
-    s = '\xfcさ6あPlayer defeated\nTASVideos merrp!\r'
-    s = 'Thanks for watching!\nIf you want a challenge..\rtry beating this without\nhacks sometime!'
-    s = '\rAnd finally..\nthe TAS is over!\rThanks to everyone who\nhelped in its making!\rWe hope to see you\nagain!'
-    s = 'This is it! TAS!'
-    convert_binary(s)
