@@ -1,5 +1,6 @@
 """ Tools for reading/writing function configuration. """
 import re
+import sys
 
 
 # [arm_func|thumb_func] <address> [module] [name]
@@ -32,6 +33,16 @@ def read_config(path):
     return addr_map
 
 
+def strip_unknown(config):  # Strip unknown names from config
+    unk_re = re.compile(r'sub_[0-9a-fA-F]{7,8}')
+    new_config = {}
+    for k, (name, module) in config.items():
+        if name and unk_re.match(name):
+            name = None
+        new_config[k] = (name, module)
+    return new_config
+
+
 def write_config(addr_map, path):
     """ Writes an address map to a configuration file.
 
@@ -39,13 +50,32 @@ def write_config(addr_map, path):
         addr_map (dict): Mapping from function address to (name, module) tuples.
         path (str): Path to write.
     """
+    named = unnamed = 0
+    current_module = None
+    seen = set()
     with open(path, 'w', buffering=1) as f:
-        f.write(f'# {len(addr_map)} functions\n# [arm_func|thumb_func] <address> [module] [name]\n')
+        nfuncs = str(len(addr_map))
+        s0 = f'# {nfuncs} functions, '
+        s1 = '{} named, {} unnamed'
+        f.write(s0+' '*len(s1.format(nfuncs, nfuncs)) + '\n')
+        f.write('# [arm_func|thumb_func] <address> [module] [name]\n')
         for addr in sorted(addr_map):
             name, module = addr_map[addr]
             parts = [f'0x{addr:07X}']
             if module:
                 parts.append(module)
+                if module != current_module:
+                    if current_module:
+                        seen.add(current_module)
+                    if module in seen:
+                        print(f"Warning: {addr:08X}: Module '{module}' was already seen!", file=sys.stderr)
+                    f.write(f'# {module}\n')
+                    current_module = module
             if name:
                 parts.append(name)
+                named += 1
+            else:
+                unnamed += 1
             f.write(' '.join(parts) + '\n')
+        f.seek(len(s0))
+        f.write(s1.format(named, unnamed))
