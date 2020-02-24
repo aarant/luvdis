@@ -31,6 +31,11 @@ ASM_PRELUDE = f'@ Generated with Luvdis v{__version__}\n.syntax unified\n.text\n
 MACROS = pkg_resources.resource_string('luvdis', 'functions.inc').decode('utf-8')
 
 
+def _set_debug(debug):
+    global DEBUG
+    DEBUG = debug
+
+
 class ROM:
     def __init__(self, path):
         with open(path, 'rb') as f:

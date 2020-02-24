@@ -5,7 +5,7 @@ import argparse
 from luvdis import __doc__ as description
 from luvdis.config import read_config
 import luvdis.disassemble
-from luvdis.disassemble import State, ROM, eprint, BASE_ADDRESS
+from luvdis.disassemble import State, ROM, eprint, BASE_ADDRESS, _set_debug
 
 
 def parse_int(n):
@@ -41,7 +41,7 @@ parser.add_argument('--no_guess', action='store_false', dest='guess',
 def main(args=None):
     args = args if args else sys.argv[1:]
     parsed = parser.parse_args(args)
-    luvdis.DEBUG = parsed.debug
+    _set_debug(parsed.debug)
     functions = read_config(parsed.config) if parsed.config else None
     state = State(functions, parsed.min_calls, parsed.min_length, parsed.start, parsed.stop, parsed.macros)
     rom = ROM(parsed.rom)

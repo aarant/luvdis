@@ -3,7 +3,7 @@ import re
 
 
 # [arm_func|thumb_func] <address> [module] [name]
-cfg_re = re.compile(r'(thumb_func|arm_func)?\s+0x([0-9a-fA-F]{7,8})(?:\s+(\S+\.s))?(?:\s+(\S+)\r?\n)?')
+cfg_re = re.compile(r'(thumb_func|arm_func)?\s*(?:0x)?([0-9a-fA-F]{7,8})(?:\s+(\S+\.s))?(?:\s+(\S+)\r?\n)?')
 
 
 def read_config(path):
