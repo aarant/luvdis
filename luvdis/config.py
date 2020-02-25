@@ -7,7 +7,7 @@ import sys
 cfg_re = re.compile(r'(thumb_func|arm_func)?\s*(?:0x)?([0-9a-fA-F]{7,8})(?:\s+(\S+\.s))?(?:\s+(\S+)\r?\n)?')
 
 
-def read_config(path):
+def read_config(path):  # TODO: Detect and flag duplicate names
     """ Reads a configuration file into an address map.
 
     Args:
@@ -52,7 +52,8 @@ def write_config(addr_map, path):
     """
     named = unnamed = 0
     current_module = None
-    seen = set()
+    modules = set()
+    names = set()
     with open(path, 'w', buffering=1) as f:
         nfuncs = str(len(addr_map))
         s0 = f'# {nfuncs} functions, '
@@ -66,12 +67,17 @@ def write_config(addr_map, path):
                 parts.append(module)
                 if module != current_module:
                     if current_module:
-                        seen.add(current_module)
-                    if module in seen:
+                        modules.add(current_module)
+                    if module in modules:
                         print(f"Warning: {addr:08X}: Module '{module}' was already seen!", file=sys.stderr)
                     f.write(f'# {module}\n')
                     current_module = module
             if name:
+                if name in names:
+                    print(f"Warning: {addr:08X}: Duplicate name '{name}'", file=sys.stderr)
+                    name = None
+                else:
+                    names.add(name)
                 parts.append(name)
                 named += 1
             else:
