@@ -58,3 +58,34 @@ To disassemble only part of a ROM, say, up to the start of read-only data, provi
 ```sh
 $ luvdis rom.gba --start 0x0800024C --stop 0x0x81b32b4 -o rom.s
 ```
+
+```
+usage: luvdis [-h] [-o OUT] [-c CONFIG] [-co CONFIG_OUT] [-D]
+              [--min_calls MIN_CALLS] [--min_length MIN_LENGTH]
+              [--start START] [--stop STOP] [--macros MACROS] [--no_guess]
+              rom
+
+positional arguments:
+  rom                   Path to GBA ROM to disassemble
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -o OUT                Disassembly output path
+  -c CONFIG, --config CONFIG
+                        Path to function configuration file
+  -co CONFIG_OUT, --config_out CONFIG_OUT
+                        Optional function configuration output
+  -D, --debug           Set debugging flag. This may add or change behavior!
+  --min_calls MIN_CALLS
+                        Minimum number of calls required to consider a
+                        potential function. Default 2.
+  --min_length MIN_LENGTH
+                        Minimum codepath length required to consider a
+                        potential function. Default 3.
+  --start START         Start address to disassemble. Default 0x8000000.
+  --stop STOP           Stop address to disassemble. Default infinity.
+  --macros MACROS       Optional path of macros to include. If omitted, embeds
+                        macros into the output file(s).
+  --no_guess            Disable function discovery & guessing entirely. Use
+                        only functions provided via -c.
+```

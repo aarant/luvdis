@@ -23,7 +23,7 @@ parser.add_argument('-c', '--config', type=str, dest='config', default=None,
 parser.add_argument('-co', '--config_out', type=str, dest='config_out', default=None,
                     help='Optional function configuration output')
 parser.add_argument('-D', '--debug', action='store_true', dest='debug',
-                    help='Set debugging flag')
+                    help='Set debugging flag. This may add or change behavior!')
 parser.add_argument('--min_calls', type=int, default=2,
                     help='Minimum number of calls required to consider a potential function. Default 2.')
 parser.add_argument('--min_length', type=int, default=3,
