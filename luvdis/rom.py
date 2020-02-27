@@ -3,6 +3,7 @@ import sys
 import pickle
 import pkg_resources
 import xml.etree.ElementTree as ET
+import argparse
 from hashlib import sha1, md5
 from io import BytesIO
 
@@ -157,8 +158,15 @@ def make_rom_db(path):  # Build db from XML
         pickle.dump(db, f)
 
 
-def main():
-    make_rom_db(sys.argv[1])
+parser = argparse.ArgumentParser(prog='luvdis info')
+parser.add_argument('rom', type=str, help='Path to GBA ROM to analyze')
+
+
+
+def main(args=None):
+    args = args if args else sys.argv[1:]
+    parsed = parser.parse_args(args)
+    rom = ROM(parsed.rom, detect=True)
 
 
 if __name__ == '__main__':

@@ -5,7 +5,7 @@ import argparse
 from luvdis import __doc__ as description
 from luvdis.config import read_config
 from luvdis.common import eprint, set_debug
-from luvdis.rom import ROM
+from luvdis.rom import ROM, main as rom_main
 from luvdis.analyze import State, BASE_ADDRESS
 
 
@@ -41,6 +41,8 @@ parser.add_argument('--no_guess', action='store_false', dest='guess',
 
 def main(args=None):
     args = args if args else sys.argv[1:]
+    if args and args[0] == 'info':
+        return rom_main(args[1:])
     parsed = parser.parse_args(args)
     set_debug(parsed.debug)
     functions = read_config(parsed.config) if parsed.config else None

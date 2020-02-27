@@ -1,7 +1,7 @@
 # Luvdis
-![PyPI - Python Version](https://img.shields.io/pypi/pyversions/luvdis?logo=python&style=for-the-badge)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/luvdis?logo=python&style=for-the-badge)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/luvdis?logo=pypi&logoColor=yellow&style=for-the-badge)](https://pypi.org/project/Luvdis/)
-![GitHub](https://img.shields.io/github/license/arantonitis/luvdis?style=for-the-badge)
+[![GitHub](https://img.shields.io/github/license/arantonitis/luvdis?style=for-the-badge)](https://github.com/arantonitis/luvdis/blob/master/LICENSE)
 
 A smart Pure-Python GBA (Game Boy Advance) disassembler.
 
@@ -10,6 +10,18 @@ Luvdis is a tool for disassembling GBA ROMs. Features include:
 * **Platform accuracy**: Other disassembly engines like Capstone recognize instructions that are not legal in ARMv4 on the GBA's processor. Luvdis' custom decoder & disassembler solves this problem by attempting to replicate hardware behavior as closely as possible and only supporting ARMv4.
 * **Function discovery**: Detect likely THUMB functions and differentiate between code and data.
 * **Matching output**: Even if something goes wrong and a label overlaps with data, etc, Luvdis' disassembled output should assemble identically to the original ROM.
+* **ROM detection**: Unsure if you have a good copy of a ROM? Luvdis can let you know!
+
+### Contents
+
+- [Installation](#installation)
+   - [From PyPI](#from-pypi)
+   - [From Releases](#from-releases)
+   - [From latest source](#from-latest-source)
+- [Usage](#usage)
+  - [Options](#options)
+  - [ROM detection](#rom-detection)
+
 
 ## Installation
 
@@ -21,7 +33,7 @@ $ python3 -m pip install luvdis --user
 ```
 
 ### From Releases
-Arbitrary stable releases can be installed from GitHub and running:
+Arbitrary stable releases can be downloaded from GitHub and installed:
 ```sh
 $ python3 -m pip install <path-to-zip> --user
 ```
@@ -31,7 +43,7 @@ $ python3 -m pip install <path-to-zip> --user
 $ python3 -m pip install git+git://https://github.com/arantonitis/luvdis#egg=luvdis
 ```
 
-### Usage
+## Usage
 The simplest way to use Luvdis is to simply give it a ROM and output file:
 ```sh
 $ luvdis <path-to-rom> -o rom.s
@@ -58,6 +70,8 @@ To disassemble only part of a ROM, say, up to the start of read-only data, provi
 ```sh
 $ luvdis rom.gba --start 0x0800024C --stop 0x0x81b32b4 -o rom.s
 ```
+
+### Options
 
 ```
 usage: luvdis [-h] [-o OUT] [-c CONFIG] [-co CONFIG_OUT] [-D]
@@ -88,4 +102,11 @@ optional arguments:
                         macros into the output file(s).
   --no_guess            Disable function discovery & guessing entirely. Use
                         only functions provided via -c.
+```
+
+### ROM Detection
+To display information about a ROM and check if its hash is in the database:
+```
+$ luvdis info unknown_rom.gba
+ROM detected: 'Pocket Monsters - Ruby (Japan)' ✔
 ```
