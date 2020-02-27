@@ -3,6 +3,9 @@ import re
 import sys
 
 
+from luvdis.common import warn
+
+
 # [arm_func|thumb_func] <address> [module] [name]
 cfg_re = re.compile(r'(thumb_func|arm_func)?\s*(?:0x)?([0-9a-fA-F]{7,8})(?:\s+(\S+\.s))?(?:\s+(\S+)\r?\n)?')
 
@@ -69,12 +72,12 @@ def write_config(addr_map, path):
                     if current_module:
                         modules.add(current_module)
                     if module in modules:
-                        print(f"Warning: {addr:08X}: Module '{module}' was already seen!", file=sys.stderr)
+                        warn(f"{addr:08X}: Module '{module}' was already seen!")
                     f.write(f'# {module}\n')
                     current_module = module
             if name:
                 if name in names:
-                    print(f"Warning: {addr:08X}: Duplicate name '{name}'", file=sys.stderr)
+                    warn(f"{addr:08X}: Duplicate name '{name}'")
                     name = None
                 else:
                     names.add(name)

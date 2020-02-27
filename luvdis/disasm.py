@@ -7,6 +7,7 @@ from enum import IntEnum, auto
 
 
 class Reg(IntEnum):
+    """ CPU Register names/numbers. """
     r0 = 0
     r1 = 1
     r2 = 2
@@ -17,6 +18,7 @@ class Reg(IntEnum):
     r7 = 7
     r8 = 8
     r9 = 9
+    # TODO: r10 also sometimes called sl
     r10 = 10
     r11 = 11
     r12 = 12
@@ -29,6 +31,7 @@ class Reg(IntEnum):
 
 
 class Opcode(IntEnum):
+    """ Symbolic set of THUMB opcodes. """
     ill = auto()
     # THUMB.1
     lsl = auto()
@@ -105,14 +108,17 @@ BRANCHES = {Opcode.beq, Opcode.bne, Opcode.bcs, Opcode.bcc, Opcode.bmi, Opcode.b
 # See GBATEK: https://problemkaputt.de/gbatek.htm#thumbinstructionsummary
 
 
-class ThumbInstr:  # ABC
+class ThumbInstr:
+    """ Abstract base class for Thumb instructions. """
     size = 2
     @property
     def mnemonic(self):
+        """ str: Assembler mnemonic for this instruction, like 'bl' or 'adds'. """
         return self.id.name.lower()
 
     @property
     def target(self):
+        """ int: Load/store/branch/call target, if it is applicable and can be determined. """
         return None
 
     def __str__(self):
@@ -120,6 +126,7 @@ class ThumbInstr:  # ABC
 
 
 class ThumbIll(ThumbInstr):
+    """ An illegal instruction. """
 
     def __init__(self, id, address, value):
         self.id, self.address, self.value = Opcode.ill, address, value
@@ -133,6 +140,7 @@ class ThumbIll(ThumbInstr):
 
 
 class Thumb1(ThumbInstr):  # Move shifted register
+    """ THUMB.1: Move shifted register instructions. """
     __slots__ = ('address', 'id', 'rd', 'rs', 'offset')
 
     def __init__(self, id, addr, rd, rs, offset):
@@ -151,6 +159,7 @@ class Thumb1(ThumbInstr):  # Move shifted register
 
 
 class Thumb2(ThumbInstr):  # Add/subtract
+    """ THUMB.2: Add/subtract instructions. """
     __slots__ = ('id', 'address', 'rd', 'rs', 'n')
 
     def __init__(self, id, addr, rd, rs, n):
@@ -168,7 +177,8 @@ class Thumb2(ThumbInstr):  # Add/subtract
             return f'{self.rd.name}, {self.rs.name}, {self.n.name}'
 
     def __str__(self):
-        if self.rd == self.rs and type(self.n) is int:  # Prevent assembler hack
+        # The assembler will optimize 'adds rx, rx, #nn' away, so use the .inst macro
+        if self.rd == self.rs and type(self.n) is int:
             value = 0x1800 | (0x600 if self.id == Opcode.sub else 0x400) | (self.n << 6) | (self.rs << 3) | self.rd
             return f'.inst 0x{value:04X}'
         else:
@@ -409,14 +419,20 @@ class Thumb19(ThumbInstr):  # Long branch with link
 
 
 def disasm(f_or_buffer, address: int, count=float('inf')):
-    """ Disassemble instructions from a file-like object or buffer.
+    """ Disassemble THUMB instructions from a file-like object or buffer.
 
     Args:
-        f_or_buffer: Either a `bytes` object or a file-like object.
+        f_or_buffer: Either a file-like object or a `bytes` object
         address (int): Initial address of the first instruction.
         count (int): Maximum number of instructions to emit. Defaults to infinity.
+
+    Yields:
+        ThumbInstr: The sequence of THUMB instructions.
     """
-    f = f_or_buffer if isinstance(f_or_buffer, io.BufferedIOBase) else BytesIO(f_or_buffer)
+    if isinstance(f_or_buffer, io.BufferedIOBase) or hasattr(f_or_buffer, 'write'):
+        f = f_or_buffer
+    else:
+        f = BytesIO(f_or_buffer)
     i = 0
     while i < count:
         ins = f.read(2)
@@ -605,7 +621,7 @@ def disasm(f_or_buffer, address: int, count=float('inf')):
                     offset = signed(upper | lower, 22)
                     target = address + 4 + (offset << 1)
                     emit = Thumb19(Opcode.bl, address, target)
-                else:  # Seek back before the read
+                else:  # Unread whatever was read
                     f.seek(-len(b), 1)
             else:  # TODO: Partial BL's are legal (See GBATEK Thumb.19)
                 pass

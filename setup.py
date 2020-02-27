@@ -15,7 +15,7 @@ setup(name='Luvdis',
       author_email='arant@mit.edu',
       url=url,
       packages=['luvdis', 'luvdis.test'],
-      package_data={'luvdis': ['*.inc']},  # Include embedded functions
+      package_data={'*': ['*.inc', '*.pickle']},  # Include embedded functions
       include_package_data=True,
       entry_points={'console_scripts': ['luvdis = luvdis.__main__:main']},
       license='MIT',

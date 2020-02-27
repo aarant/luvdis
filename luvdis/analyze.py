@@ -9,12 +9,13 @@ from io import BytesIO
 from collections import defaultdict
 
 from luvdis import __version__
+from luvdis.common import DEBUG, eprint, warn, dprint
 from luvdis.config import write_config
-from luvdis.decoder import disasm, Opcode, Reg, BRANCHES
-from luvdis.decoder import Thumb1, Thumb2, Thumb3, Thumb4, Thumb5, Thumb6, Thumb78, Thumb910, Thumb11, Thumb12, Thumb13
+from luvdis.rom import ROM
+from luvdis.disasm import disasm, Opcode, Reg, BRANCHES
+from luvdis.disasm import Thumb1, Thumb2, Thumb3, Thumb4, Thumb5, Thumb6, Thumb78, Thumb910, Thumb11, Thumb12, Thumb13
 
 
-DEBUG = False
 # ROM flags
 FLAG_EXEC = 1
 FLAG_WORD = 2
@@ -29,36 +30,6 @@ THUMB = 0
 BASE_ADDRESS = 0x08000000
 ASM_PRELUDE = f'@ Generated with Luvdis v{__version__}\n.syntax unified\n.text\n'
 MACROS = pkg_resources.resource_string('luvdis', 'functions.inc').decode('utf-8')
-
-
-def _set_debug(debug):
-    global DEBUG
-    DEBUG = debug
-
-
-class ROM:
-    def __init__(self, path):
-        with open(path, 'rb') as f:
-            self.buffer = f.read()
-            self.size = len(self.buffer)
-            self.f = BytesIO(self.buffer)
-        dprint(f'Loaded {os.path.basename(path)}')
-
-    def read(self, addr, size=1, safe=True):
-        if safe:
-            cursor = self.f.tell()
-        self.f.seek(addr & 0xffffff)
-        b = self.f.read(size)
-        if safe:
-            self.f.seek(cursor)
-        return int.from_bytes(b, 'little', signed=False)
-
-    def dist(self, addr=0x08000000, count=None):
-        self.f.seek(addr & 0xffffff)
-        if count is None:
-            yield from disasm(self.f, addr)
-        else:
-            yield from disasm(self.f, addr, count)
 
 
 def left_gt(l, x):
@@ -104,19 +75,6 @@ def find_bounds(l, low, high):
         if l[j] >= high:
             break
         yield l[j]
-
-
-def eprint(*args, **kwargs):  # Print to stderr
-    return print(*args, file=sys.stderr, **kwargs)
-
-
-def warn(s):
-    return eprint('Warning:', s)
-
-
-def dprint(*args, **kwargs):  # Print to stderr if debugging
-    if DEBUG:
-        return print(*args, file=sys.stderr, **kwargs)
 
 
 class RomFlags:  # Markable address flags
@@ -427,6 +385,8 @@ class State:
         self.min_calls, self.min_length, self.start, self.stop = min_calls, min_length, start, stop
         self.macros = macros
 
+        self.debug_ranges = {}
+
         self.call_to = defaultdict(set)  # addr -> {called from}
         self.branch_links = []  # Sorted list of BL instructions
         self.branch_to = defaultdict(set)  # addr -> {branched from}
@@ -444,9 +404,9 @@ class State:
 
     def analyze_rom(self, rom, guess=True):  # Analyze a ROM
         if type(self.stop) is float:
-            eprint(f'Disassembling ROM from 0x{self.start:08X}:')
+            eprint(f'Disassembling from 0x{self.start:08X}:')
         else:
-            eprint(f'Disassembling ROM from 0x{self.start:08X}:0x{self.stop:08X}')
+            eprint(f'Disassembling from 0x{self.start:08X}:0x{self.stop:08X}')
         pushes = set()  # Set of push {xx, lr} instruction locations
         self.flags = RomFlags(rom.size)
         # Build instruction tables, etc for later
@@ -606,6 +566,8 @@ class State:
             self.label_map.update(labels)
             for start, end, flag in ranges:
                 self.flags[start:end] |= flag
+                if DEBUG and (flag & FLAG_EXEC):
+                    self.debug_ranges.setdefault(func, []).append((start, end))
             for target in calls:
                 if all(target not in d for d in (self.functions, self.unexpanded, self.not_funcs, new_unexpanded)):
                     new_unexpanded[target] = None
@@ -640,6 +602,11 @@ class State:
             write_config(addr_map, config_output)
         # Setup initial module & file
         folder, module = os.path.split(path) if path else (None, None)
+        if DEBUG and path:
+            import pickle
+            with open(os.path.join(folder, 'funcs.pickle'), 'wb') as f:
+                pickle.dump(self.debug_ranges, f)
+            fl = open('luvdis.ld', 'w')
         f = None if path else sys.stdout
         # Setup start and end addresses
         addr = self.start
@@ -713,6 +680,8 @@ class State:
                     else:
                         f.write(MACROS)
                     count = 0  # Reset byte count
+                    if DEBUG:
+                        fl.write(f'{path[:-2]}.o(.text);\n')
 
             # If switching out of byte mode mid-line, write a newline
             if old_mode == BYTE and mode != BYTE and count != 0:
@@ -799,3 +768,5 @@ class State:
             if count != 0:
                 f.write('\n')
             f.close()
+        if DEBUG and path:
+            fl.close()

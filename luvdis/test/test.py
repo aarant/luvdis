@@ -4,7 +4,7 @@ import glob
 from os.path import join as joinp
 
 from luvdis.assemble import assemble, sremove
-from luvdis.decoder import Opcode, disasm
+from luvdis.disasm import Opcode, disasm
 
 BASE_ADDRESS = 0x08000000
 TEST_DIR = joinp('luvdis', 'test')

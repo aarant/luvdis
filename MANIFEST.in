@@ -1,1 +1,1 @@
-global-include *.inc
+global-include *.inc *.pickle
