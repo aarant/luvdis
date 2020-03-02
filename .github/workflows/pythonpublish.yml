@@ -1,12 +1,15 @@
-name: Upload Python Package
+name: Publish Python package
 
 on:
-  create:
-  release:
-    types: [created]
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
 
 jobs:
-  deploy:
+  pypi:
+    name: Publish to PyPI
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -25,3 +28,45 @@ jobs:
       run: |
         python setup.py sdist bdist_wheel
         twine upload dist/*
+  pyinstall:
+    name: Build Windows executable
+    runs-on: windows-latest
+    needs: pypi
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: '3.7'
+      - name: Get version
+        id: tag_name
+        uses: olegtarasov/get-tag@v2
+        with:
+          tagRegex: "v(.*)"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          echo ${{ steps.tag_name.outputs.tag }}
+      - name: Build executable
+        run: |
+          python pyinstall.py
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.tag_name.outputs.tag }}
+          release_name: v${{ steps.tag_name.outputs.tag }}
+          draft: true
+          prerelease: false
+      - name: Upload release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/Luvdis-${{ steps.tag_name.outputs.tag }}.exe
+          asset_name: Luvdis-${{ steps.tag_name.outputs.tag }}.exe
+          asset_content_type: application/zip
