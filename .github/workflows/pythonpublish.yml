@@ -2,8 +2,6 @@ name: Publish Python package
 
 on:
   push:
-    branches:
-      - master
     tags:
       - 'v*'
 
@@ -31,7 +29,6 @@ jobs:
   pyinstall:
     name: Build Windows executable
     runs-on: windows-latest
-    needs: pypi
     steps:
       - uses: actions/checkout@v2
       - name: Set up Python
@@ -47,7 +44,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          echo ${{ steps.tag_name.outputs.tag }}
       - name: Build executable
         run: |
           python pyinstall.py
