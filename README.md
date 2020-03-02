@@ -33,10 +33,12 @@ $ python3 -m pip install luvdis --user
 ```
 
 ### From Releases
-Arbitrary stable releases can be downloaded from GitHub and installed:
+Arbitrary stable [releases](https://github.com/arantonitis/luvdis/releases/latest) can be downloaded from GitHub and installed:
 ```sh
 $ python3 -m pip install <path-to-zip> --user
 ```
+
+For Windows users, prebuilt binaries are also available.
 
 ### From latest source
 ```sh
