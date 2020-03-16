@@ -1,12 +1,13 @@
 """ ROM disassembly/dumping tools. """
 import sys
-
 import os.path
 import pkg_resources
 from math import inf as INF
 from bisect import bisect_left, bisect_right
 from io import BytesIO
 from collections import defaultdict
+
+from tqdm import tqdm
 
 from luvdis import __version__
 from luvdis.common import DEBUG, eprint, warn, dprint
@@ -28,6 +29,7 @@ WORD = 3  # Also a dumping mode
 THUMB = 0
 
 BASE_ADDRESS = 0x08000000
+END_ADDRESS = BASE_ADDRESS + 0x01000000
 ASM_PRELUDE = f'@ Generated with Luvdis v{__version__}\n.syntax unified\n.text\n'
 MACROS = pkg_resources.resource_string('luvdis', 'functions.inc').decode('utf-8')
 
@@ -388,16 +390,6 @@ class State:
         self.debug_ranges = {}
 
         self.call_to = defaultdict(set)  # addr -> {called from}
-        self.branch_links = []  # Sorted list of BL instructions
-        self.branch_to = defaultdict(set)  # addr -> {branched from}
-        self.branches = []  # Sorted list of branch addresses
-        self.data = []  # Sorted list of non-coding instructions
-        self.bxs = []  # Sorted list of BXs
-        self.loads = []  # Sorted list of LDRs
-
-        self.forks = []  # Sorted list of instructions that *guarantee* nonlinear execution
-
-        self._to_sort = (self.branch_links, self.data, self.branches, self.bxs, self.loads, self.forks)
 
         self.flags = None
         self.label_map = {BASE_ADDRESS: BRANCH}
@@ -407,54 +399,28 @@ class State:
             eprint(f'Disassembling from 0x{self.start:08X}:')
         else:
             eprint(f'Disassembling from 0x{self.start:08X}:0x{self.stop:08X}')
-        pushes = set()  # Set of push {xx, lr} instruction locations
+        pushes = set()  # Set of push {xx, lr} addresses
         self.flags = RomFlags(rom.size)
-        # Build instruction tables, etc for later
         for ins in rom.dist(self.start):
             addr = ins.address
             if addr >= self.stop:
                 break
-            # THUMB.5
-            if ins.id == Opcode.bx:
-                self.bxs.append(addr)
-            elif ins.id in (Opcode.add, Opcode.mov) and ins.op_str[:2] == 'pc':
-                self.forks.append(addr)
-            # THUMB.6
-            elif ins.id == Opcode.ldr and hasattr(ins, 'target'):
-                self.loads.append((addr, ins.target))
-            # TODO: Track THUMB.12 adr as a load target?
             # THUMB.14
-            elif ins.id == Opcode.push and ins.touched(Reg.lr):
+            if ins.id == Opcode.push and ins.touched(Reg.lr):
                 # Add addr and preceding locations as possible function entries
                 pushes.add(max(BASE_ADDRESS, addr-4))
                 pushes.add(max(BASE_ADDRESS, addr-2))
                 pushes.add(addr)
-            elif ins.id == Opcode.pop and ins.touched(Reg.pc):  # `pop {pc}`, though rare, is nonlinear
-                self.forks.append(addr)
-            # THUMB.16, THUMB.18
-            elif ins.id in BRANCHES:
-                self.branch_to[ins.target].add(addr)
-                self.branches.append(addr)
             # THUMB.19
             elif ins.id == Opcode.bl:
                 self.call_to[ins.target].add(addr)
-                self.branch_links.append(addr)
-                # dprint(f'bl @ {addr:08X} -> {ins.target:08X}')
-            # Illegal instructions
-            elif ins.id == Opcode.ill:
-                self.data.append(addr)
-            if False:
-                input(f'{ins.address:08x} {ins}')
-        # Merge forks with bxs
-        self.forks.extend(self.bxs)
-        for to_sort in self._to_sort:  # Sort all sorted lists
-            to_sort.sort()
         # Expand all provided functions
         eprint(f'{len(self.unexpanded)} functions provided')
         changed = self.analyze_funcs(rom, 0)
-        if not guess:  # Exit here if not guessing
+        if not guess:  # Stop here if not guessing
             self.make_labels(rom)
             return
+        # Repeatedly expand and find new functions
         while changed:
             changed = self.analyze_funcs(rom, 2/3)  # TODO: Add configurable threshold
         eprint(f'Found {len(self.functions)} functions')
@@ -469,7 +435,7 @@ class State:
         dprint(f'{len(self.not_funcs)} not-funcs')
         self.make_labels(rom)
 
-    def guess_funcs(self, rom, entries):  # Guess functions based on heuristic
+    def guess_funcs(self, rom, entries):  # Guess functions based on number of calls and code length
         dicts = (self.functions, self.unexpanded, self.not_funcs)
         for maybe_func in entries:
             if maybe_func < self.stop and all(maybe_func not in d for d in dicts):
@@ -499,7 +465,7 @@ class State:
                     ins = state.emulate(rom, addr)  # Emulate until first relevant instruction
                     # Hitting an illegal instruction, or the end of the ROM, is misbehavior
                     if ins is None or ins.id == Opcode.ill:
-                        exit_behavior = False
+                        exit_behaved = False
                         end = rom.size | 0x08000000 if ins is None else ins.address
                         break
                     elif ins.id == Opcode.ldr:  # Mark target as WORD
@@ -515,11 +481,11 @@ class State:
                             labels[target] = BRANCH
                             if target not in expanded:  # Add target as start
                                 new_starts[target] = state.copy()
-                            exit_behavior = None
+                            exit_behaved = None
                             if ins.id == Opcode.b:  # Fork on unconditional branch
                                 break
-                        else:
-                            exit_behavior = False  # Branching OOB is misbehavior
+                        else:  # Branching OOB is misbehavior
+                            exit_behaved = False
                             break
                     elif ins.id == Opcode.bl:
                         target = ins.target
@@ -527,26 +493,26 @@ class State:
                         if target < self.stop:
                             labels[target] = BRANCH
                             calls[target] = state.copy()  # Copy state to start of function
-                            exit_behavior = None
+                            exit_behaved = None
                         else:
-                            exit_behavior = False  # Calling an OOB function is misbehavior
+                            exit_behaved = False  # Calling an OOB function is misbehavior
                             break
                     elif ins.id == Opcode.bx:
                         target = state[ins.rs] & 0xffffffff
                         end = addr = ins.address+2
                         # Well-behaved iff returned properly and the stack is safe
-                        exit_behavior = target == state.return_addr and state[13] == initial_stack
+                        exit_behaved = target == state.return_addr and state[13] == initial_stack
                         break
                     elif ins.id == Opcode.pop:  # pop {pc}
                         end = ins.address+2
-                        exit_behavior = (state[15] & 0xffffff) == state.return_addr
+                        exit_behaved = (state[15] & 0xffffff) == state.return_addr
                         break
                     else:  # ADD/MOV pc
                         target = state[ins.rd] & 0xffffffff
                         end = addr = ins.address+2
-                        exit_behavior = target == state.return_addr and state[13] == initial_stack
+                        exit_behaved = target == state.return_addr and state[13] == initial_stack
                         break
-                expanded[start] = exit_behavior
+                expanded[start] = exit_behaved
                 ranges.append((start, end, FLAG_EXEC))
             starts = new_starts
         # Tally exit behaviors
@@ -557,7 +523,6 @@ class State:
     def analyze_funcs(self, rom, threshold=0.5):
         changed = False
         new_unexpanded = {}
-        # print(f'\rFound {len(self.functions)} functions', end='')
         for func, name in self.unexpanded.items():
             exited, total, labels, calls, ranges = self.analyze_func(rom, func)
             if (total and exited/total < threshold) or (total == 0 != threshold):
@@ -566,15 +531,13 @@ class State:
             self.label_map.update(labels)
             for start, end, flag in ranges:
                 self.flags[start:end] |= flag
-                if DEBUG and (flag & FLAG_EXEC):
+                if DEBUG and (flag & FLAG_EXEC):  # Track executable ranges for debugging
                     self.debug_ranges.setdefault(func, []).append((start, end))
             for target in calls:
                 if all(target not in d for d in (self.functions, self.unexpanded, self.not_funcs, new_unexpanded)):
                     new_unexpanded[target] = None
                     changed = True
             self.functions[func] = (name, None)  # TODO: Track the ends of functions?
-            # print(f'\rFound {len(self.functions)} functions', end='')
-        # print()
         self.unexpanded = new_unexpanded
         return changed
 
@@ -602,7 +565,7 @@ class State:
             write_config(addr_map, config_output)
         # Setup initial module & file
         folder, module = os.path.split(path) if path else (None, None)
-        if DEBUG and path:
+        if DEBUG and path:  # Output function range info if debugging
             import pickle
             with open(os.path.join(folder, 'funcs.pickle'), 'wb') as f:
                 pickle.dump(self.debug_ranges, f)
@@ -614,88 +577,93 @@ class State:
             end = rom.size | BASE_ADDRESS
         else:
             end = min(rom.size, self.stop & 0xffffff) | BASE_ADDRESS
-        if addr not in self.module_addrs and module:
+        if addr not in self.module_addrs and module:  # Set module of initial address to the path output
             self.module_addrs[addr] = module
-        mode, flags, count = BYTE, 0, 0
+        mode, flags, bytecount = BYTE, 0, 0
+        # Initialize progress bar & messages
+        bar = tqdm(total=end-addr, file=sys.stderr, unit='B', unit_scale=True).__enter__()
+        def eprint(*args):
+            return bar.write(' '.join(args), file=sys.stderr)
+        def warn(*args):
+            return bar.write(' '.join(('Warning:',) + args), file=sys.stderr)
+        module_len = 0
         # Main disassembly loop
         while addr < end:
-            next_addr = left_gt(self.labels, addr)  # Address of the next label after this one, if any
-            addr_flags = self.flags[addr]  # Flags at this address
+            next_addr = left_gt(self.labels, addr)  # Address of next label greater than this address, if any
+            addr_flags = self.flags[addr]  # Address flags
             old_mode = mode
 
-            # Determine which mode to switch into
-            if addr_flags == 0 and flags != 0:  # Switch to byte mode
+            # Switch output modes
+            if addr_flags == 0 and flags != 0:  # Switch to byte mode when address flags are zero
                 mode = BYTE
-            elif addr_flags & FLAG_EXEC and not (flags & FLAG_EXEC):  # Switch to code mode
+            elif addr_flags & FLAG_EXEC and not (flags & FLAG_EXEC):  # Output code
                 mode = THUMB
-            elif addr_flags & FLAG_WORD and not (flags & FLAG_WORD) and not (addr_flags & FLAG_EXEC):
+            elif addr_flags & FLAG_WORD and not (flags & FLAG_WORD) and not (addr_flags & FLAG_EXEC):  # Output words
                 mode = WORD
-            # Various things can force a switch to BYTE mode
+            # Avoid overlapping label with BL or word by switching into byte mode
             if mode == THUMB:
                 ins, = rom.dist(addr, 1)
-                offset = 4 if ins.id == Opcode.bl else 2  # BL's are the only 4 byte instruction
-                if next_addr and addr + offset > next_addr:  # Switch to byte mode to avoid skipping over label
+                if next_addr and addr + ins.size > next_addr:  # Switch to byte mode to avoid skipping over label
                     _name = self.label_for(next_addr)
                     warn(f'{addr:08X}: THUMB instruction "{ins.mnemonic}" overlaps label at {next_addr:08X} ({_name})')
                     mode = BYTE
                     addr_flags &= ~FLAG_EXEC
             elif mode == WORD:
-                offset = 4
-                if next_addr and addr + offset > next_addr:
+                if next_addr and addr + 4 > next_addr:
                     warn(f'{addr:08X}: Word overlaps label at {next_addr:08X} ({self.label_for(next_addr)})')
                     mode = BYTE
                     addr_flags &= ~FLAG_WORD
 
             # Determine label and comment
             # TODO: Check which labels are used in other modules--they must be marked as global for the assembler!
-            label_type = self.label_map.get(addr, None)  # Type of label
-            label = None if label_type is None else self.label_for(addr)
+            label_type = self.label_map.get(addr, None)
+            label = None if label_type is None else self.label_for(addr)  # Check against None as label_type may be 0
             comment = ''
-            if label_type == FUNC:
+            if label_type == FUNC:  # Tag function start
                 func = label
-                if (addr & (~3)) == addr:  # Function is word aligned
+                if (addr & (~3)) == addr:
                     label = f'\tthumb_func_start {func}\n{func}:'
-                else:
+                else:  # Function is not word-aligned
                     label = f'\tnon_word_aligned_thumb_func_start {func}\n{func}:'
                 if func[:4] != 'sub_':
                     comment += f' @ {addr:08X}'
             elif label:
                 label += ':'
 
+            # If switching out of byte mode mid-line, write a newline
+            if old_mode == BYTE and mode != BYTE and bytecount != 0:
+                bytecount = 0
+                f.write('\n')
+
             # Switch module output
-            if f is not sys.stdout and addr in self.module_addrs:
+            if f is not sys.stdout and addr in self.module_addrs:  # Address has module info
                 new_module = self.module_addrs[addr]
-                if new_module != module or f is None:
+                if new_module != module or f is None:  # New/first module seen
                     module = new_module
                     path = os.path.join(folder, module)
                     eprint(f"{addr:08X}: module '{path}'")
+                    bar.set_description(module + ' '*max(0, module_len-len(module)))
+                    module_len = max(module_len, len(module))
                     if f:
-                        if count != 0:
+                        if bytecount:
                             f.write('\n')
                         f.close()
                     f = open(path, 'w', buffering=1)
                     f.write(ASM_PRELUDE)
-                    if self.macros:
-                        f.write(f'.include "{self.macros}"\n')
-                    else:
-                        f.write(MACROS)
-                    count = 0  # Reset byte count
-                    if DEBUG:
+                    f.write(f'.include "{self.macros}"\n' if self.macros else MACROS)
+                    bytecount = 0  # Reset byte bytecount
+                    if DEBUG:  # Output link script if debugging
                         fl.write(f'{path[:-2]}.o(.text);\n')
-
-            # If switching out of byte mode mid-line, write a newline
-            if old_mode == BYTE and mode != BYTE and count != 0:
-                count = 0
-                f.write('\n')
 
             # Emit code or data
             if mode == THUMB:
+                offset = ins.size
                 if ins.id == Opcode.bl or ins.id in BRANCHES:
                     target = ins.target
-                    if target in self.label_map:  # BL to label
+                    if target in self.label_map:  # Branch to label
                         name = self.label_for(target)
                         emit = f'{ins.mnemonic} {name}'
-                    else:  # Emit raw bytes
+                    else:  # Missing label; emit raw bytes TODO: Use .inst over .4byte/.2byte?
                         warn(f'{addr:08X}: Missing target for "{ins.mnemonic}": {target:08X}')
                         i = rom.read(addr, offset)
                         if offset == 4:
@@ -718,21 +686,18 @@ class State:
                     emit = f'{ins.mnemonic} {op_str} @ =0x{value:08X}'  # QOL; comment value read
                 else:
                     emit = str(ins)
-                if DEBUG and ins.id == Opcode.bx:
-                    if 'r7' in ins.op_str:
-                        dprint(f'DEBUG: {addr:08X} bx r7')
+                if DEBUG and ins.id == Opcode.bx and 'r7' in ins.op_str:  # TODO: Library detection
+                    dprint(f'DEBUG: {addr:08X} bx r7')
                     emit += f' @ {rom.read(addr, 2):04X}'
 
                 if label:
                     f.write(f'{label}{comment}\n')
-                if DEBUG:
-                    f.write(f'\t{emit} @ {addr:08X}\n')
-                else:
-                    f.write(f'\t{emit}\n')
+                f.write(f'\t{emit} @ {addr:08X}\n' if DEBUG else f'\t{emit}\n')
             elif mode == WORD:
+                offset = 4
                 value = rom.read(addr, 4)
-                if value & 1 and self.label_map.get(value-1, None) == FUNC:
-                    value = self.label_for(value-1)  # Reference THUMB function name
+                if value & 1 and self.label_map.get(value-1, None) == FUNC:  # Reference THUMB function
+                    value = self.label_for(value-1)
                 else:
                     value = f'0x{value:08X}'
                 if label:
@@ -745,28 +710,30 @@ class State:
             elif mode == BYTE:
                 offset = 1
                 if old_mode != BYTE:
-                    count = 0
+                    bytecount = 0
                 if label:
-                    if count != 0:
+                    if bytecount != 0:
                         f.write(f'\n')
                     f.write(f'{label}{comment}\n')
-                    count = 0
+                    bytecount = 0
                 value = rom.read(addr, 1)
-                if count == 0:
+                if bytecount == 0:
                     f.write(f'\t.byte 0x{value:02X}')
-                    count = 1
-                elif count == 15:
+                    bytecount = 1
+                elif bytecount == 15:
                     f.write(f', 0x{value:02X}\n')
-                    count = 0
+                    bytecount = 0
                 else:
                     f.write(f', 0x{value:02X}')
-                    count += 1
+                    bytecount += 1
             flags = addr_flags
             addr += offset
-        # Close the file if necessary
+            bar.update(offset)
+        # Close current module
         if f is not sys.stdout and f:
-            if count != 0:
+            if bytecount:
                 f.write('\n')
             f.close()
+        bar.close()
         if DEBUG and path:
             fl.close()

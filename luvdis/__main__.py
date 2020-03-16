@@ -1,57 +1,87 @@
 """ Luvdis CLI. """
-import sys
-import argparse
 
-from luvdis import __doc__ as description
+import click
+from click_default_group import DefaultGroup
+
+from luvdis import __version__
 from luvdis.config import read_config
 from luvdis.common import eprint, set_debug
-from luvdis.rom import ROM, main as rom_main
-from luvdis.analyze import State, BASE_ADDRESS
+from luvdis.rom import ROM
+from luvdis.analyze import State, BASE_ADDRESS, END_ADDRESS
 
 
-def parse_int(n):
-    return int(n, 0)
+class AddressInt(click.ParamType):
+    name = "integer"
+
+    def convert(self, value, param, ctx):
+        try:
+            value = int(value, base=0)
+            return min(max(value, BASE_ADDRESS), END_ADDRESS)
+        except TypeError:
+            self.fail(
+                "expected string for int() conversion, got "
+                f"{value!r} of type {type(value).__name__}",
+                param,
+                ctx,
+            )
+        except ValueError:
+            self.fail(f"{value!r} is not a valid integer", param, ctx)
 
 
-parser = argparse.ArgumentParser(prog='luvdis', formatter_class=argparse.RawDescriptionHelpFormatter,
-                                 description=description)
-parser.add_argument('rom', type=str,
-                    help='Path to GBA ROM to disassemble')
-parser.add_argument('-o', type=str, dest='out', default=None,
-                    help='Disassembly output path')
-parser.add_argument('-c', '--config', type=str, dest='config', default=None,
-                    help='Path to function configuration file')
-parser.add_argument('-co', '--config_out', type=str, dest='config_out', default=None,
-                    help='Optional function configuration output')
-parser.add_argument('-D', '--debug', action='store_true', dest='debug',
-                    help='Set debugging flag. This may add or change behavior!')
-parser.add_argument('--min_calls', type=int, default=2,
-                    help='Minimum number of calls required to consider a potential function. Default 2.')
-parser.add_argument('--min_length', type=int, default=3,
-                    help='Minimum codepath length required to consider a potential function. Default 3.')
-parser.add_argument('--start', type=parse_int, default=BASE_ADDRESS,
-                    help='Start address to disassemble. Default 0x8000000.')
-parser.add_argument('--stop', type=parse_int, default=float('inf'),
-                    help='Stop address to disassemble. Default infinity.')
-parser.add_argument('--macros', type=str, default=None,
-                    help='Optional path of macros to include. If omitted, embeds macros into the output file(s).')
-parser.add_argument('--no_guess', action='store_false', dest='guess',
-                    help='Disable function discovery & guessing entirely. Use only functions provided via -c.')
+ADDRESS_INT = AddressInt()
 
 
-def main(args=None):
-    args = args if args else sys.argv[1:]
-    if args and args[0] == 'info':
-        return rom_main(args[1:])
-    parsed = parser.parse_args(args)
-    set_debug(parsed.debug)
-    functions = read_config(parsed.config) if parsed.config else None
-    state = State(functions, parsed.min_calls, parsed.min_length, parsed.start, parsed.stop, parsed.macros)
-    rom = ROM(parsed.rom)
-    state.analyze_rom(rom, parsed.guess)
-    if parsed.out is None:
+@click.group(cls=DefaultGroup, default='disasm', default_if_no_args=True)
+@click.version_option(message=f'Luvdis {__version__}')
+def main():
+    pass
+
+
+@main.command('disasm')
+@click.version_option(message=f'Luvdis {__version__}')
+@click.argument('rom', type=click.Path(exists=True, dir_okay=False, readable=True))
+@click.option('-o', '--output', type=click.Path(writable=True, dir_okay=False, allow_dash=True), default='-',
+              help='Disassembly output path. If configuration contains module information, this is only the initial '
+                   'output path.')
+@click.option('-c', '--config', type=click.Path(exists=True, dir_okay=False, readable=True),
+              help='Function configuration file.')
+@click.option('-co', '--config-out', 'config_out', type=click.Path(writable=True, dir_okay=False),
+              help="Output configuration. If any functions are 'guessed' by Luvdis, they will appear here.")
+@click.option('-D', '--debug', is_flag=True, help='Turn on/off debugging behavior.')
+@click.option('--start', type=ADDRESS_INT, default=BASE_ADDRESS,
+              help='Starting address to disassemble. Defaults to 0x8000000 (the start of the ROM).')
+@click.option('--stop', type=ADDRESS_INT, default=END_ADDRESS,
+              help='Stop disassembly at this address. Defaults to 0x9000000 (maximum ROM address + 1).')
+@click.option('--macros', type=click.Path(exists=True, dir_okay=False, readable=True),
+              help="Assembler macro file to '.include' in disassembly. If not specified, default macros are embedded.")
+@click.option('--guess/--no-guess', default=True,
+              help='Turn on/off function guessing & discovery. Default is to perform guessing.')
+@click.option('--min-calls', 'min_calls', type=click.IntRange(1), default=2,
+              help="Minimum number of calls to a function required in order to 'guess' it. Must be at least 1, "
+                   "defaults to 2.")
+@click.option('--min-length', 'min_length', type=click.IntRange(1), default=3,
+              help="Minimum valid instruction length required in order to 'guess' a function. Must be at least 1, "
+                   "defaults to 3.")
+def disasm(rom, output, config, config_out, debug, start, stop, macros, guess, min_calls, min_length, **kwargs):
+    """ Analyze and disassemble a GBA ROM. """
+    for k, v in kwargs.items():
+        print(k, v)
+    set_debug(debug)
+    functions = read_config(config) if config else None
+    rom = ROM(rom)
+    state = State(functions, min_calls, min_length, start, stop, macros)
+    state.analyze_rom(rom, guess)
+    if output is None:
         eprint(f'No output file specified. Printing to stdout.')
-    state.dump(rom, parsed.out, parsed.config_out)
+    state.dump(rom, output, config_out)
+
+
+@main.command(name='info')
+@click.version_option(message=f'Luvdis {__version__}')
+@click.argument('rom', type=click.Path(exists=True, dir_okay=False, readable=True))
+def info(rom):
+    """ Detect GBA ROM game/database information. """
+    rom = ROM(rom, detect=True)
 
 
 if __name__ == '__main__':

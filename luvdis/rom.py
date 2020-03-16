@@ -3,7 +3,6 @@ import sys
 import pickle
 import pkg_resources
 import xml.etree.ElementTree as ET
-import argparse
 from hashlib import sha1, md5
 from io import BytesIO
 
@@ -52,6 +51,8 @@ class ROM:
         self._info = False
         with open(path, 'rb') as f:
             self.buffer = f.read()
+            if len(self.buffer) > 0x01000000:  # 16 MiB
+                warn(f'ROM size {len(self.buffer)/2**20:.2f} MiB larger than 16 MiB address space.')
             self.size = len(self.buffer)
             self.f = BytesIO(self.buffer)
         if detect:
@@ -156,18 +157,3 @@ def make_rom_db(path):  # Build db from XML
     db = (by_serial, by_md5, by_sha1)
     with open('gba-db.pickle', 'wb') as f:
         pickle.dump(db, f)
-
-
-parser = argparse.ArgumentParser(prog='luvdis info')
-parser.add_argument('rom', type=str, help='Path to GBA ROM to analyze')
-
-
-
-def main(args=None):
-    args = args if args else sys.argv[1:]
-    parsed = parser.parse_args(args)
-    rom = ROM(parsed.rom, detect=True)
-
-
-if __name__ == '__main__':
-    main()

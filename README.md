@@ -76,34 +76,36 @@ $ luvdis rom.gba --start 0x0800024C --stop 0x0x81b32b4 -o rom.s
 ### Options
 
 ```
-usage: luvdis [-h] [-o OUT] [-c CONFIG] [-co CONFIG_OUT] [-D]
-              [--min_calls MIN_CALLS] [--min_length MIN_LENGTH]
-              [--start START] [--stop STOP] [--macros MACROS] [--no_guess]
-              rom
+Usage: luvdis disasm [OPTIONS] ROM
 
-positional arguments:
-  rom                   Path to GBA ROM to disassemble
+  Analyze and disassemble a GBA ROM.
 
-optional arguments:
-  -h, --help            show this help message and exit
-  -o OUT                Disassembly output path
-  -c CONFIG, --config CONFIG
-                        Path to function configuration file
-  -co CONFIG_OUT, --config_out CONFIG_OUT
-                        Optional function configuration output
-  -D, --debug           Set debugging flag. This may add or change behavior!
-  --min_calls MIN_CALLS
-                        Minimum number of calls required to consider a
-                        potential function. Default 2.
-  --min_length MIN_LENGTH
-                        Minimum codepath length required to consider a
-                        potential function. Default 3.
-  --start START         Start address to disassemble. Default 0x8000000.
-  --stop STOP           Stop address to disassemble. Default infinity.
-  --macros MACROS       Optional path of macros to include. If omitted, embeds
-                        macros into the output file(s).
-  --no_guess            Disable function discovery & guessing entirely. Use
-                        only functions provided via -c.
+Options:
+  --version                   Show the version and exit.
+  -o, --output FILE           Disassembly output path. If configuration
+                              contains module information, this is only the
+                              initial output path.
+  -c, --config FILE           Function configuration file.
+
+  -co, --config-out FILE      Output configuration. If any functions are
+                              'guessed' by Luvdis, they will appear here.
+  -D, --debug                 Turn on/off debugging behavior.
+  --start INTEGER             Starting address to disassemble. Defaults to
+                              0x8000000 (the start of the ROM).
+  --stop INTEGER              Stop disassembly at this address. Defaults to
+                              0x9000000 (maximum ROM address + 1).
+  --macros FILE               Assembler macro file to '.include' in
+                              disassembly. If not specified, default macros
+                              are embedded.
+  --guess / --no-guess        Turn on/off function guessing & discovery.
+                              Default is to perform guessing.
+  --min-calls INTEGER RANGE   Minimum number of calls to a function required
+                              in order to 'guess' it. Must be at least 1,
+                              defaults to 2.
+  --min-length INTEGER RANGE  Minimum valid instruction length required in
+                              order to 'guess' a function. Must be at least 1,
+                              defaults to 3.
+  --help                      Show this message and exit.
 ```
 
 ### ROM Detection

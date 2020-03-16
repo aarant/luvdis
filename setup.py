@@ -26,5 +26,5 @@ setup(name='Luvdis',
                    'Programming Language :: Python :: 3.6',
                    'Programming Language :: Python :: 3.7',
                    'Programming Language :: Python :: 3.8'],
-      install_requires=[],
+      install_requires=['click>=7.0', 'click-default-group', 'tqdm>=4.0.0'],
       python_requires='>=3.6')
