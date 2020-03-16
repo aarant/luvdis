@@ -15,6 +15,8 @@ class AddressInt(click.ParamType):
 
     def convert(self, value, param, ctx):
         try:
+            if type(value) in (int, float):  # Passthrough defaults
+                return value
             value = int(value, base=0)
             return min(max(value, BASE_ADDRESS), END_ADDRESS)
         except TypeError:
@@ -50,8 +52,8 @@ def main():
 @click.option('-D', '--debug', is_flag=True, help='Turn on/off debugging behavior.')
 @click.option('--start', type=ADDRESS_INT, default=BASE_ADDRESS,
               help='Starting address to disassemble. Defaults to 0x8000000 (the start of the ROM).')
-@click.option('--stop', type=ADDRESS_INT, default=END_ADDRESS,
-              help='Stop disassembly at this address. Defaults to 0x9000000 (maximum ROM address + 1).')
+@click.option('--stop', type=ADDRESS_INT, default=float('inf'),
+              help='Stop disassembly at this address. Defaults to infinity.')
 @click.option('--macros', type=click.Path(exists=True, dir_okay=False, readable=True),
               help="Assembler macro file to '.include' in disassembly. If not specified, default macros are embedded.")
 @click.option('--guess/--no-guess', default=True,
@@ -71,7 +73,8 @@ def disasm(rom, output, config, config_out, debug, start, stop, macros, guess, m
     rom = ROM(rom)
     state = State(functions, min_calls, min_length, start, stop, macros)
     state.analyze_rom(rom, guess)
-    if output is None:
+    if output in (None, '-'):
+        output = None
         eprint(f'No output file specified. Printing to stdout.')
     state.dump(rom, output, config_out)
 

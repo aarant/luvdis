@@ -29,7 +29,7 @@ WORD = 3  # Also a dumping mode
 THUMB = 0
 
 BASE_ADDRESS = 0x08000000
-END_ADDRESS = BASE_ADDRESS + 0x01000000
+END_ADDRESS = BASE_ADDRESS + 0x01000000 - 1  # Highest addressable location
 ASM_PRELUDE = f'@ Generated with Luvdis v{__version__}\n.syntax unified\n.text\n'
 MACROS = pkg_resources.resource_string('luvdis', 'functions.inc').decode('utf-8')
 

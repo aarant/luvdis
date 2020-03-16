@@ -10,7 +10,7 @@ Luvdis is a tool for disassembling GBA ROMs. Features include:
 * **Platform accuracy**: Other disassembly engines like Capstone recognize instructions that are not legal in ARMv4 on the GBA's processor. Luvdis' custom decoder & disassembler solves this problem by attempting to replicate hardware behavior as closely as possible and only supporting ARMv4.
 * **Function discovery**: Detect likely THUMB functions and differentiate between code and data.
 * **Matching output**: Even if something goes wrong and a label overlaps with data, etc, Luvdis' disassembled output should assemble identically to the original ROM.
-* **ROM detection**: Unsure if you have a good copy of a ROM? Luvdis can let you know!
+* **ROM detection**: Unsure if you have a good copy of a ROM? Luvdis can let you know with `luvdis info`!
 
 ### Contents
 
