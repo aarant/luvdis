@@ -7,7 +7,7 @@ from luvdis import __version__
 from luvdis.config import read_config
 from luvdis.common import eprint, set_debug
 from luvdis.rom import ROM
-from luvdis.analyze import State, BASE_ADDRESS, END_ADDRESS
+from luvdis.analyze import State, BASE_ADDRESS, END_ADDRESS, THUMB, BYTE, WORD
 
 
 class AddressInt(click.ParamType):
@@ -31,6 +31,7 @@ class AddressInt(click.ParamType):
 
 
 ADDRESS_INT = AddressInt()
+MODE_MAP = {'byte': BYTE, 'thumb': THUMB, 'word': WORD}
 
 
 @click.group(cls=DefaultGroup, default='disasm', default_if_no_args=True)
@@ -47,7 +48,7 @@ def main():
                    'output path.')
 @click.option('-c', '--config', type=click.Path(exists=True, dir_okay=False, readable=True),
               help='Function configuration file.')
-@click.option('-co', '--config-out', 'config_out', type=click.Path(writable=True, dir_okay=False),
+@click.option('-co', '--config-out', type=click.Path(writable=True, dir_okay=False),
               help="Output configuration. If any functions are 'guessed' by Luvdis, they will appear here.")
 @click.option('-D', '--debug', is_flag=True, help='Turn on/off debugging behavior.')
 @click.option('--start', type=ADDRESS_INT, default=BASE_ADDRESS,
@@ -58,15 +59,18 @@ def main():
               help="Assembler macro file to '.include' in disassembly. If not specified, default macros are embedded.")
 @click.option('--guess/--no-guess', default=True,
               help='Turn on/off function guessing & discovery. Default is to perform guessing.')
-@click.option('--min-calls', 'min_calls', type=click.IntRange(1), default=2,
+@click.option('--min-calls', type=click.IntRange(1), default=2,
               help="Minimum number of calls to a function required in order to 'guess' it. Must be at least 1, "
                    "defaults to 2.")
-@click.option('--min-length', 'min_length', type=click.IntRange(1), default=3,
+@click.option('--min-length', type=click.IntRange(1), default=3,
               help="Minimum valid instruction length required in order to 'guess' a function. Must be at least 1, "
                    "defaults to 3.")
-def disasm(rom, output, config, config_out, debug, start, stop, macros, guess, min_calls, min_length, **kwargs):
+@click.option('--default-mode', type=click.Choice(('THUMB', 'BYTE', 'WORD'), case_sensitive=False), default='BYTE',
+              help="Default disassembly mode when the nature of an address is unknown. Defaults to 'BYTE'.")
+def disasm(rom, output, config, config_out, debug, start, stop, macros, guess, min_calls, min_length, default_mode,
+           **kw):
     """ Analyze and disassemble a GBA ROM. """
-    for k, v in kwargs.items():
+    for k, v in kw.items():
         print(k, v)
     set_debug(debug)
     functions = read_config(config) if config else None
@@ -76,7 +80,7 @@ def disasm(rom, output, config, config_out, debug, start, stop, macros, guess, m
     if output in (None, '-'):
         output = None
         eprint(f'No output file specified. Printing to stdout.')
-    state.dump(rom, output, config_out)
+    state.dump(rom, output, config_out, default_mode=MODE_MAP[default_mode.lower()])
 
 
 @main.command(name='info')

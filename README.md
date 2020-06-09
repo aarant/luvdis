@@ -19,6 +19,7 @@ Luvdis is a tool for disassembling GBA ROMs. Features include:
    - [From Releases](#from-releases)
    - [From latest source](#from-latest-source)
 - [Usage](#usage)
+  - [FAQ](#faq)
   - [Options](#options)
   - [ROM detection](#rom-detection)
 
@@ -73,6 +74,17 @@ To disassemble only part of a ROM, say, up to the start of read-only data, provi
 $ luvdis rom.gba --start 0x0800024C --stop 0x0x81b32b4 -o rom.s
 ```
 
+### FAQ
+
+#### How can I get rid of large blocks of raw bytes in the disassembly?
+
+By default, Luvdis treats areas of a ROM that it can't determine are executable as byte data. You can change this behavior
+with the `default_mode` option:
+
+```sh
+$ luvdis rom.gba --default_mode THUMB -o rom.s
+```
+
 ### Options
 
 ```
@@ -105,6 +117,9 @@ Options:
   --min-length INTEGER RANGE  Minimum valid instruction length required in
                               order to 'guess' a function. Must be at least 1,
                               defaults to 3.
+  --default-mode [THUMB|BYTE|WORD]
+                              Default disassembly mode when the nature of
+                              an address is unknown. Defaults to 'BYTE'.
   --help                      Show this message and exit.
 ```
 

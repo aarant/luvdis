@@ -382,7 +382,7 @@ class State:
                 else:
                     name = value
                 self.unexpanded[addr] = name
-        self.functions = {}  # addr -> (name, end)
+        self.functions = {}  # addr -> (name, end_address)
         self.not_funcs = set()
         self.min_calls, self.min_length, self.start, self.stop = min_calls, min_length, start, stop
         self.macros = macros
@@ -468,7 +468,7 @@ class State:
                         exit_behaved = False
                         end = rom.size | 0x08000000 if ins is None else ins.address
                         break
-                    elif ins.id == Opcode.ldr:  # Mark target as WORD
+                    elif ins.id == Opcode.ldr:  # Mark load target as WORD
                         end = addr = ins.address+2
                         target = ins.target
                         if target < self.stop:  # TODO: Is this necessary?
@@ -559,25 +559,27 @@ class State:
                 return name
         return f'_{addr:08X}'
 
-    def dump(self, rom, path=None, config_output=None):
-        if config_output:  # Optionally, write updated function list
+    def dump(self, rom, path=None, config_output=None, default_mode=BYTE):
+        if config_output:  # Optionally write updated function list
             addr_map = {addr: (name, self.module_addrs.get(addr, None)) for addr, (name, _) in self.functions.items()}
             write_config(addr_map, config_output)
         # Setup initial module & file
         folder, module = os.path.split(path) if path else (None, None)
-        if DEBUG and path:  # Output function range info if debugging
+        if DEBUG and path:
             import pickle
+            # Output function range info if debugging
             with open(os.path.join(folder, 'funcs.pickle'), 'wb') as f:
                 pickle.dump(self.debug_ranges, f)
+            # Also output a linker script
             fl = open('luvdis.ld', 'w')
         f = None if path else sys.stdout
         # Setup start and end addresses
         addr = self.start
-        if type(self.stop) is float:  # End is the final address in the ROM
+        if type(self.stop) is float:  # End at the final address in the ROM
             end = rom.size | BASE_ADDRESS
         else:
             end = min(rom.size, self.stop & 0xffffff) | BASE_ADDRESS
-        if addr not in self.module_addrs and module:  # Set module of initial address to the path output
+        if addr not in self.module_addrs and module:  # Mark the very first address as belonging to the initial module
             self.module_addrs[addr] = module
         mode, flags, bytecount = BYTE, 0, 0
         # Initialize progress bar & messages
@@ -594,8 +596,8 @@ class State:
             old_mode = mode
 
             # Switch output modes
-            if addr_flags == 0 and flags != 0:  # Switch to byte mode when address flags are zero
-                mode = BYTE
+            if addr_flags == 0 and flags != 0:  # Switch to default mode when address flags are zero
+                mode = default_mode  # By default, BYTE mode
             elif addr_flags & FLAG_EXEC and not (flags & FLAG_EXEC):  # Output code
                 mode = THUMB
             elif addr_flags & FLAG_WORD and not (flags & FLAG_WORD) and not (addr_flags & FLAG_EXEC):  # Output words
@@ -638,7 +640,7 @@ class State:
             # Switch module output
             if f is not sys.stdout and addr in self.module_addrs:  # Address has module info
                 new_module = self.module_addrs[addr]
-                if new_module != module or f is None:  # New/first module seen
+                if new_module != module or f is None:  # Entering new/first module
                     module = new_module
                     path = os.path.join(folder, module)
                     eprint(f"{addr:08X}: module '{path}'")
@@ -651,12 +653,12 @@ class State:
                     f = open(path, 'w', buffering=1)
                     f.write(ASM_PRELUDE)
                     f.write(f'.include "{self.macros}"\n' if self.macros else MACROS)
-                    bytecount = 0  # Reset byte bytecount
-                    if DEBUG:  # Output link script if debugging
+                    bytecount = 0  # Reset bytecount
+                    if DEBUG:  # Output linker script if debugging
                         fl.write(f'{path[:-2]}.o(.text);\n')
 
             # Emit code or data
-            if mode == THUMB:
+            if mode == THUMB:  # THUMB code
                 offset = ins.size
                 if ins.id == Opcode.bl or ins.id in BRANCHES:
                     target = ins.target
@@ -672,7 +674,7 @@ class State:
                             emit = f'.2byte 0x{i:04X} @ {ins.mnemonic} _{target:08X}'
                 elif ins.id == Opcode.bx:
                     value = rom.read(addr, 2)
-                    # Assembler cannot emit bx with nonzero rd, see THUMB.5 TODO: Should these be illegal?
+                    # Assembler will not emit bx with nonzero rd, see THUMB.5 TODO: Should these be treated as illegal?
                     emit = f'.inst 0x{value:04X}' if value & 3 != 0 else str(ins)
                 elif ins.id == Opcode.ldr and isinstance(ins, Thumb6):  # Convert PC-relative loads into labels
                     target = ins.target
@@ -700,10 +702,7 @@ class State:
                     value = self.label_for(value-1)
                 else:
                     value = f'0x{value:08X}'
-                if label:
-                    emit = f'{label} .4byte {value}'
-                else:
-                    emit = f'\t.4byte {value}'
+                emit = f'{label} .4byte {value}' if label else f'\t.4byte {value}'
                 if DEBUG:
                     comment += f' @ {addr_flags}'
                 f.write(f'{emit}{comment}\n')
@@ -729,7 +728,7 @@ class State:
             flags = addr_flags
             addr += offset
             bar.update(offset)
-        # Close current module
+        # Done with output; close file handles and cleanup
         if f is not sys.stdout and f:
             if bytecount:
                 f.write('\n')
