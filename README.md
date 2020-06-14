@@ -105,7 +105,7 @@ Options:
   --start INTEGER             Starting address to disassemble. Defaults to
                               0x8000000 (the start of the ROM).
   --stop INTEGER              Stop disassembly at this address. Defaults to
-                              0x9000000 (maximum ROM address + 1).
+                              0x9FFFFFF (maximum ROM address).
   --macros FILE               Assembler macro file to '.include' in
                               disassembly. If not specified, default macros
                               are embedded.
