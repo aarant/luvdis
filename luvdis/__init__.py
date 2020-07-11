@@ -2,6 +2,6 @@
 
 Copyright (C) 2020 A. Antonitis. Licensed under the MIT license.
 """
-__version__ = '0.7.1'
+__version__ = '0.8.0'
 __doc__ = __doc__.replace('__version__', __version__)
 url = __url__ = 'https://github.com/arantonitis/luvdis'

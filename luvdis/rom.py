@@ -51,8 +51,8 @@ class ROM:
         self._info = False
         with open(path, 'rb') as f:
             self.buffer = f.read()
-            if len(self.buffer) > 0x01000000:  # 16 MiB
-                warn(f'ROM size {len(self.buffer)/2**20:.2f} MiB larger than 16 MiB address space.')
+            if len(self.buffer) > 0x02000000:  # 32 MiB
+                warn(f'ROM size {len(self.buffer)/2**20:.2f} MiB larger than 32 MiB address space.')
             self.size = len(self.buffer)
             self.f = BytesIO(self.buffer)
         if detect:

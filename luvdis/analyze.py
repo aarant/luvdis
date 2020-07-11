@@ -627,7 +627,7 @@ class State:
                     label = f'\tthumb_func_start {func}\n{func}:'
                 else:  # Function is not word-aligned
                     label = f'\tnon_word_aligned_thumb_func_start {func}\n{func}:'
-                if func[:4] != 'sub_':
+                if func[:4] != 'sub_':  # Comment function address for named functions
                     comment += f' @ {addr:08X}'
             elif label:
                 label += ':'
@@ -638,7 +638,7 @@ class State:
                 f.write('\n')
 
             # Switch module output
-            if f is not sys.stdout and addr in self.module_addrs:  # Address has module info
+            if f is not sys.stdout and addr in self.module_addrs:  # Address starts a module
                 new_module = self.module_addrs[addr]
                 if new_module != module or f is None:  # Entering new/first module
                     module = new_module
@@ -665,7 +665,7 @@ class State:
                     if target in self.label_map:  # Branch to label
                         name = self.label_for(target)
                         emit = f'{ins.mnemonic} {name}'
-                    else:  # Missing label; emit raw bytes TODO: Use .inst over .4byte/.2byte?
+                    else:  # Missing label; emit raw bytes
                         warn(f'{addr:08X}: Missing target for "{ins.mnemonic}": {target:08X}')
                         i = rom.read(addr, offset)
                         if offset == 4:
@@ -712,19 +712,17 @@ class State:
                     bytecount = 0
                 if label:
                     if bytecount != 0:
-                        f.write(f'\n')
+                        f.write('\n')
+                        bytecount = 0
                     f.write(f'{label}{comment}\n')
-                    bytecount = 0
                 value = rom.read(addr, 1)
                 if bytecount == 0:
                     f.write(f'\t.byte 0x{value:02X}')
-                    bytecount = 1
                 elif bytecount == 15:
                     f.write(f', 0x{value:02X}\n')
-                    bytecount = 0
                 else:
                     f.write(f', 0x{value:02X}')
-                    bytecount += 1
+                bytecount = (bytecount + 1) % 16
             flags = addr_flags
             addr += offset
             bar.update(offset)

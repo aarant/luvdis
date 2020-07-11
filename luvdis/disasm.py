@@ -98,6 +98,8 @@ class Opcode(IntEnum):
     b = auto()
     # THUMB.19
     bl = auto()
+    # THUMB.20
+    pbl = auto()  # Not a real opcode; used to distinguish from bl
 
 
 # Set of all unconditional/conditional branch opcodes
@@ -111,6 +113,7 @@ BRANCHES = {Opcode.beq, Opcode.bne, Opcode.bcs, Opcode.bcc, Opcode.bmi, Opcode.b
 class ThumbInstr:
     """ Abstract base class for Thumb instructions. """
     size = 2
+
     @property
     def mnemonic(self):
         """ str: Assembler mnemonic for this instruction, like 'bl' or 'adds'. """
@@ -126,7 +129,7 @@ class ThumbInstr:
 
 
 class ThumbIll(ThumbInstr):
-    """ An illegal instruction. """
+    """ An illegal instruction. Hangs the CPU when encountered. """
 
     def __init__(self, id, address, value):
         self.id, self.address, self.value = Opcode.ill, address, value
@@ -370,15 +373,18 @@ class Thumb15(ThumbInstr):  # Multiple load/store  TODO: See THUMB.15 "Strange e
         return f'{self.rb.name}!, {{{", ".join(regs)}}}'
 
     def __str__(self):
-        # Invalid in ARMv4: rlist or base in writeback  TODO: Handle invalid rlists elsewhere?
-        if self.rlist == 0 or (self.id == Opcode.ldm and self.touched(self.rb)):
+        # Empty rlist or base in writeback is invalid in ARMv4 TODO: Handle invalid rlists elsewhere?
+        if not self.rlist or (self.id == Opcode.ldm and self.touched(self.rb)):
             value = 0xC000 | (0x800 if self.id == Opcode.ldm else 0) | (self.rb << 8) | self.rlist
             return f'.inst 0x{value:04X}'
         else:
             return f'{self.mnemonic} {self.op_str}'
 
 
-class Thumb1618(ThumbInstr):  # Branches
+class Thumb1618(ThumbInstr):
+    """ THUMB.16: Conditional branch & THUMB.18: Unconditional branch.
+
+    Offset range is higher for unconditional branches (11 bits) than conditional branches (8 bits). """
     __slots__ = ('id', 'address', 'offset')
 
     def __init__(self, id, address, offset):
@@ -395,7 +401,8 @@ class Thumb1618(ThumbInstr):  # Branches
         return f'#0x{self.target:X}'
 
 
-class Thumb17(ThumbInstr):  # SWI
+class Thumb17(ThumbInstr):
+    """ THUMB.17: SoftWare Interrupt (SWI). Used for calls to the operating system/BIOS. """
     __slots__ = ('id', 'address', 'n')
 
     def __init__(self, id, address, n):
@@ -406,7 +413,11 @@ class Thumb17(ThumbInstr):  # SWI
         return f'#{self.n:d}'
 
 
-class Thumb19(ThumbInstr):  # Long branch with link
+class Thumb19(ThumbInstr):
+    """ THUMB.19: Long branch with link. Used to call (or jump) to a subroutine, return address saved in LR.
+
+    For this instruction, `target` is the address of the jump/call.
+    """
     size = 4
     __slots__ = ('id', 'address', 'target')
 
@@ -416,6 +427,28 @@ class Thumb19(ThumbInstr):  # Long branch with link
     @property
     def op_str(self):
         return f'#0x{self.target:X}'
+
+
+class Thumb20(ThumbInstr):
+    """ Partial branch-link.
+
+    Almost always embedded as the second half of a 'proper' BL, this sets `PC = LR + (imm << 1)` AND `LR = PC + 2 | 1`.
+    It is, however, legal on its own and is used this way in some games. See GBATEK THUMB.19 for details.
+    """
+    size = 2
+    __slots__ = ('id', 'address', 'imm')
+
+    def __init__(self, id, address, imm):
+        self.id, self.address, self.imm = id, address, imm
+
+    @property
+    def op_str(self):
+        return f'lr+{self.imm << 1}' if self.imm else 'lr'
+
+    def __str__(self):
+        # Assembler does not recognize 'bl lr+imm' so raw bytes must be emitted instead
+        # TODO: .2byte is only used over .inst because the assembler complained about instruction size
+        return f'.2byte 0x{0xF800 + self.imm:4X} @ bl {self.op_str}'
 
 
 def disasm(f_or_buffer, address: int, count=float('inf')):
@@ -616,15 +649,15 @@ def disasm(f_or_buffer, address: int, count=float('inf')):
                 upper = (ins & 0x7ff) << 11
                 b = f.read(2)
                 dst = int.from_bytes(b, 'little')
-                if b and (dst >> 11) == 31:
+                if b and (dst >> 11) == 0b11111:
                     lower = dst & 0x7ff
                     offset = signed(upper | lower, 22)
                     target = address + 4 + (offset << 1)
                     emit = Thumb19(Opcode.bl, address, target)
                 else:  # Unread whatever was read
                     f.seek(-len(b), 1)
-            else:  # TODO: Partial BL's are legal (See GBATEK Thumb.19)
-                pass
+            elif op == 0b11111:  # 'Partial' BL lr+imm; see GBATEK Thumb.19
+                emit = Thumb20(Opcode.pbl, address, ins & 0x7ff)
         if emit is None:
             emit = ThumbIll(Opcode.ill, address, ins)
         address += emit.size

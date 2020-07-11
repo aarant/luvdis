@@ -92,5 +92,7 @@ label:
   @ THUMB.19
   bl label
   bl label2
+  @ Partial BL
+  .2byte 0xF801 @ BL lr+2
 label2:
   swi #5
