@@ -5,7 +5,9 @@
 
 A smart Pure-Python GBA (Game Boy Advance) disassembler.
 
-Luvdis is a tool for disassembling GBA ROMs. Features include:
+Luvdis is a tool for disassembling GBA ROMs, mostly for the purpose of creating buildable, matching disassemblies.
+
+Features include:
 * **Configurable output**: Disassemble to `stdout`, a single file, or separate output into modules based on configuration.
 * **Platform accuracy**: Other disassembly engines like Capstone recognize instructions that are not legal in ARMv4 on the GBA's processor. Luvdis' custom decoder & disassembler solves this problem by attempting to replicate hardware behavior as closely as possible and only supporting ARMv4.
 * **Function discovery**: Detect likely THUMB functions and differentiate between code and data.
@@ -39,7 +41,7 @@ Arbitrary stable [releases](https://github.com/arantonitis/luvdis/releases/lates
 $ python3 -m pip install <path-to-zip> --user
 ```
 
-For Windows users, prebuilt binaries are also available.
+For Windows users, [prebuilt binaries](https://github.com/arantonitis/luvdis/releases/latest) are also available.
 
 ### From latest source
 ```sh
