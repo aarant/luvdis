@@ -37,7 +37,7 @@ jobs:
           python-version: '3.7'
       - name: Get version
         id: tag_name
-        uses: olegtarasov/get-tag@v2
+        uses: olegtarasov/get-tag@v2.1
         with:
           tagRegex: "v(.*)"
       - name: Install dependencies
