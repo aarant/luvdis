@@ -6,8 +6,8 @@ from os.path import join as joinp
 
 from luvdis.charmap import convert_file
 
-AS = joinp('asm', 'arm-none-eabi-as')
-LD = joinp('asm', 'arm-none-eabi-ld')
+AS = 'arm-none-eabi-as'
+LD = 'arm-none-eabi-ld'
 LINK_TEMPLATE = joinp('asm', 'linker.ld')
 
 
