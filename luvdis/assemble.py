@@ -1,3 +1,4 @@
+""" Assemble code for ARM processors using the system's ARM binutils. """
 import subprocess
 import os
 import sys
@@ -36,6 +37,8 @@ def assemble(path, addr=0, clean=True, debug=True):
         clean (bool): Whether to clean intermediate files. Defaults to True.
         debug (bool): Whether to export the binary as hex. Defaults to True.
     """
+    if not os.path.isdir('build'):
+        os.makedirs('build', exist_ok=True)
     root, ext = os.path.splitext(os.path.basename(path))
     asm_path = joinp('build', f'{root}.s')
     obj_path = joinp('build', f'{root}.o')

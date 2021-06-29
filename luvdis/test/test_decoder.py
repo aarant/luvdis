@@ -34,7 +34,16 @@ def compare_binaries(p1, p2):
         return len(b1) == len(b2)
 
 
-def round_trip(path, labels=None):
+def round_trip(path: str, labels: dict = None):
+    """ Compare the result of assembling path directly, or passing the output through the disassembler and back.
+
+    Args:
+        path (str): Relative path to assembly file.
+        labels: (dict): Mapping from ROM addresses to label names
+
+    Returns:
+        bool: Whether the resulting binaries match
+    """
     labels = {} if labels is None else labels
     root, ext = os.path.splitext(os.path.basename(path))
     assemble(path, BASE_ADDRESS, debug=False)
@@ -56,9 +65,9 @@ def round_trip(path, labels=None):
     return eq
 
 
-class DecoderTest(unittest.TestCase):
+class TestDecoder:
     def test_full(self):
-        self.assertTrue(round_trip(joinp(TEST_DIR, 'test_full.s'), {0x08000088: 'label', 0x08000092: 'label2'}))
+        assert round_trip(joinp(TEST_DIR, 'test_thumb.s'), {0x08000088: 'label', 0x08000092: 'label2'}) == True
 
 
 if __name__ == '__main__':

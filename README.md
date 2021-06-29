@@ -2,6 +2,7 @@
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/luvdis?logo=python&style=for-the-badge)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/luvdis?logo=pypi&logoColor=yellow&style=for-the-badge)](https://pypi.org/project/Luvdis/)
 [![GitHub](https://img.shields.io/github/license/arantonitis/luvdis?style=for-the-badge)](https://github.com/arantonitis/luvdis/blob/master/LICENSE)
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/arantonitis/luvdis/test-build-publish?style=for-the-badge)
 
 A smart Pure-Python GBA (Game Boy Advance) disassembler.
 
