@@ -4,19 +4,19 @@ on:
   push:
     branches:
       - master
-    # tags:
-    #   - 'v*'
+    tags:
+      - 'v*'
 
 jobs:
   test:
     name: Test with PyTest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v7
         with:
-          python-version: '3.7'
+          python-version: '3.9'
       - name: Install dependencies
         run: |
           sudo apt-get install binutils-arm-none-eabi gcc-arm-none-eabi
@@ -31,9 +31,9 @@ jobs:
     needs: test
     if: contains(github.ref, 'refs/tags/v') # https://github.community/t/trigger-job-on-tag-push-only/18076
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7
     - name: Set up Python
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v7
       with:
         python-version: '3.x'
     - name: Install dependencies
@@ -53,11 +53,11 @@ jobs:
     needs: test
     if: contains(github.ref, 'refs/tags/v') # https://github.community/t/trigger-job-on-tag-push-only/18076
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v7
         with:
-          python-version: '3.7'
+          python-version: '3.9'
       - name: Get version
         id: tag_name
         uses: olegtarasov/get-tag@v2.1
