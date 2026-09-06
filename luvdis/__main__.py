@@ -7,7 +7,7 @@ from luvdis import __version__
 from luvdis.config import read_config
 from luvdis.common import eprint, set_debug
 from luvdis.rom import ROM
-from luvdis.analyze import State, BASE_ADDRESS, END_ADDRESS, THUMB, BYTE, WORD
+from luvdis.analyze import State, ROM_START, clamp_addr, THUMB, BYTE, WORD
 
 
 class AddressInt(click.ParamType):
@@ -18,7 +18,7 @@ class AddressInt(click.ParamType):
             if type(value) in (int, float):  # Passthrough defaults
                 return value
             value = int(value, base=0)
-            return min(max(value, BASE_ADDRESS), END_ADDRESS)
+            return clamp_addr(value)
         except TypeError:
             self.fail(
                 "expected string for int() conversion, got "
@@ -51,7 +51,7 @@ def main():
 @click.option('-co', '--config-out', type=click.Path(writable=True, dir_okay=False),
               help="Output configuration. If any functions are 'guessed' by Luvdis, they will appear here.")
 @click.option('-D', '--debug', is_flag=True, help='Turn on/off debugging behavior.')
-@click.option('--start', type=ADDRESS_INT, default=BASE_ADDRESS,
+@click.option('--start', type=ADDRESS_INT, default=ROM_START,
               help='Starting address to disassemble. Defaults to 0x8000000 (the start of the ROM).')
 @click.option('--stop', type=ADDRESS_INT, default=float('inf'),
               help='Stop disassembly at this address. Defaults to infinity.')

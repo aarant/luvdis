@@ -88,6 +88,14 @@ with the `default_mode` option:
 $ luvdis rom.gba --default_mode THUMB -o rom.s
 ```
 
+### What about [multiboot](https://mgba-emu.github.io/gbatek/#0c0h---normalmultiplay-mode-entry-point) ROMs?
+
+You can disassemble a multiboot ROM (meant to be loaded in EWRAM at 0x02000000) by passing:
+
+```sh
+luvdis rom.gba --start 0x02000000
+```
+
 ### Options
 
 ```

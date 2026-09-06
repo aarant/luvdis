@@ -28,8 +28,10 @@ WORD = 3  # Also a dumping mode
 # Dumping modes
 THUMB = 0
 
-BASE_ADDRESS = 0x08000000
-END_ADDRESS = 0x09FFFFFF  # Highest addressable location
+EWRAM_START = 0x02000000
+EWRAM_END = 0x0203FFFF
+ROM_START = 0x08000000
+ROM_END = 0x09FFFFFF
 ASM_PRELUDE = f'@ Generated with Luvdis v{__version__}\n.syntax unified\n.text\n'
 MACROS = pkg_resources.resource_string('luvdis', 'functions.inc').decode('utf-8')
 
@@ -77,6 +79,27 @@ def find_bounds(l, low, high):
         if l[j] >= high:
             break
         yield l[j]
+
+
+def clamp_addr(addr, mb=None):
+    """ Clamp/canonicalize an address within its region.
+
+    Args:
+        addr (int): Address to clamp
+        mb: True or False to force (m)ulti(b)oot behavior
+    """
+    if addr < 0x01000000: # no memory region
+        if mb == True: # EWRAM
+            addr = addr | EWRAM_START
+        else:
+            addr = addr | ROM_START
+    if (addr & 0xff000000) == 0x02000000: # EWRAM
+        addr &= 0x0203FFFF # remove mirrors
+        addr = min(max(addr, EWRAM_START), EWRAM_END)
+    else: # ROM
+        addr &= 0x09FFFFFF
+        addr = min(max(addr, ROM_START), ROM_END)
+    return addr
 
 
 class RomFlags:  # Markable address flags
@@ -174,7 +197,7 @@ class UndefInt:  # In integer-like object that is only equal to itself and is cl
 
 class CPUState:
     unknown = UndefInt()
-    return_addr = BASE_ADDRESS
+    return_addr = ROM_START
     __slots__ = ('reg', 'stack', 'sp')
 
     def __init__(self):
@@ -318,7 +341,7 @@ class CPUState:
         if type(offset) is Reg:
             offset = self[offset]
         addr += offset
-        if addr == self.unknown or (addr & 0xff000000) != BASE_ADDRESS:
+        if addr == self.unknown or (addr & 0xff000000) != ROM_START:
             return self.unknown
         if op == Opcode.ldr:
             value = rom.read(addr, 4)
@@ -370,7 +393,7 @@ class CPUState:
 
 
 class State:
-    def __init__(self, functions=None, min_calls=2, min_length=3, start=BASE_ADDRESS, stop=INF, macros=None):
+    def __init__(self, functions=None, min_calls=2, min_length=3, start=ROM_START, stop=INF, macros=None):
         self.unexpanded = {}
         self.module_addrs = {}
         if functions:
@@ -392,7 +415,7 @@ class State:
         self.call_to = defaultdict(set)  # addr -> {called from}
 
         self.flags = None
-        self.label_map = {BASE_ADDRESS: BRANCH}
+        self.label_map = {(self.start & 0xFF000000): BRANCH}
 
     def analyze_rom(self, rom, guess=True):  # Analyze a ROM
         if type(self.stop) is float:
@@ -408,8 +431,8 @@ class State:
             # THUMB.14
             if ins.id == Opcode.push and ins.touched(Reg.lr):
                 # Add addr and preceding locations as possible function entries
-                pushes.add(max(BASE_ADDRESS, addr-4))
-                pushes.add(max(BASE_ADDRESS, addr-2))
+                pushes.add(max((self.start & 0xff000000), addr-4))
+                pushes.add(max((self.start & 0xff000000), addr-2))
                 pushes.add(addr)
             # THUMB.19
             elif ins.id == Opcode.bl:
@@ -576,9 +599,9 @@ class State:
         # Setup start and end addresses
         addr = self.start
         if type(self.stop) is float:  # End at the final address in the ROM
-            end = rom.size | BASE_ADDRESS
+            end = rom.size | (self.start & 0xff000000)
         else:
-            end = min(rom.size, self.stop & 0xffffff) | BASE_ADDRESS
+            end = min(rom.size, self.stop & 0xffffff) | (self.start & 0xff000000)
         if addr not in self.module_addrs and module:  # Mark the very first address as belonging to the initial module
             self.module_addrs[addr] = module
         mode, flags, bytecount = BYTE, 0, 0
