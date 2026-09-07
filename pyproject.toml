@@ -1,30 +1,44 @@
-from setuptools import setup
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
 
-from luvdis import __version__, url
+[project]
+name = "Luvdis"
+description = "Pure-Python Game Boy Advance Disassembler"
+readme = "README.md"
+authors = [
+    {name = "Ariel A", email = "24759293+aarant@users.noreply.github.com"},
+]
+dependencies = [
+    "click~=7.0",
+    "click-default-group",
+    "tqdm>=4.0.0",
+]
+license = "MIT"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Topic :: Software Development :: Disassemblers",
+    "Topic :: System :: Hardware",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9"
+]
+requires-python = ">= 3.6"
+dynamic = ["version"]
 
-with open('README.md', 'r') as f:
-    long_description = f.read()
+[project.scripts]
+luvdis = "luvdis.__main__:main"
 
+[tool.setuptools]
+packages = ["luvdis", "luvdis.test"]
 
-setup(name='Luvdis',
-      version=__version__,
-      description='Pure-Python Game Boy Advance Disassembler',
-      long_description=long_description,
-      long_description_content_type='text/markdown',
-      author='Ariel Antonitis',
-      author_email='arantonitis@gmail.com',
-      url=url,
-      packages=['luvdis', 'luvdis.test'],
-      package_data={'*': ['*.inc', '*.pickle']},  # Include embedded functions
-      include_package_data=True,
-      entry_points={'console_scripts': ['luvdis = luvdis.__main__:main']},
-      license='MIT',
-      classifiers=['Development Status :: 4 - Beta',
-                   'Environment :: Console',
-                   'Topic :: Software Development :: Disassemblers',
-                   'Topic :: System :: Hardware',
-                   'Programming Language :: Python :: 3.6',
-                   'Programming Language :: Python :: 3.7',
-                   'Programming Language :: Python :: 3.8'],
-      install_requires=['click>=7.0', 'click-default-group', 'tqdm>=4.0.0'],
-      python_requires='>=3.6')
+[tool.setuptools.dynamic]
+version = {attr = "luvdis.__version__"}
+
+[tool.setuptools.package-data]
+"*" = ["*.inc", "*.pickle"]
+
+[project.urls]
+Repository = "https://github.com/aarant/luvdis"
